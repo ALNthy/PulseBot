@@ -2,7 +2,7 @@
 
   <!-- OneBot 协议适配器：把 OneBot 原始事件转换为 Core 的 IEvent / MessageSegment。 -->
   <PropertyGroup>
-    <RootNamespace>PulseBot.Adapter.OneBot</RootNamespace>
+    <RootNamespace>PulseBot.Adapter.OneBotV11</RootNamespace>
   </PropertyGroup>
 
   <ItemGroup>

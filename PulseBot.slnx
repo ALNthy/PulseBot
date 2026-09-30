@@ -1,7 +1,7 @@
 <Solution>
   <Folder Name="/src/">
     <Project Path="src/PulseBot.Adapter.Console/PulseBot.Adapter.Console.csproj" />
-    <Project Path="src/PulseBot.Adapter.OneBotV11/PulseBot.Adapter.OneBot.csproj" />
+    <Project Path="src/PulseBot.Adapter.OneBotV11/PulseBot.Adapter.OneBotV11.csproj" />
     <Project Path="src/PulseBot.Admin.Api/PulseBot.Admin.Api.csproj" />
     <Project Path="src/PulseBot.Admin.Infrastructure/PulseBot.Admin.Infrastructure.csproj" />
     <Project Path="src/PulseBot.Admin.Shared/PulseBot.Admin.Shared.csproj" />

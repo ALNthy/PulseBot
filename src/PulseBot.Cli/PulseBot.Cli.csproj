@@ -9,7 +9,7 @@
   <ItemGroup>
     <ProjectReference Include="..\PulseBot.Core\PulseBot.Core.csproj" />
     <ProjectReference Include="..\PulseBot.Adapter.Console\PulseBot.Adapter.Console.csproj" />
-    <ProjectReference Include="..\PulseBot.Adapter.OneBotV11\PulseBot.Adapter.OneBot.csproj" />
+    <ProjectReference Include="..\PulseBot.Adapter.OneBotV11\PulseBot.Adapter.OneBotV11.csproj" />
     <ProjectReference Include="..\PulseBot.Plugins.Echo\PulseBot.Plugins.Echo.csproj" />
   </ItemGroup>
 
