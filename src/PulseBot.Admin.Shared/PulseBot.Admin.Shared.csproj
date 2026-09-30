@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- 后台共享契约：DTO、枚举、常量。Core 与前端之外的第三方可安全引用。 -->
+  <PropertyGroup>
+    <RootNamespace>PulseBot.Admin.Shared</RootNamespace>
+  </PropertyGroup>
+
+</Project>

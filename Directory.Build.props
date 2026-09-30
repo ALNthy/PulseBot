@@ -1,0 +1,35 @@
+<Project>
+
+  <!--
+    全解决方案共享的编译设置。
+    目标框架与语言版本在此统一声明，各 csproj 不再重复书写，
+    以满足 CLAUDE.md「目标框架统一为 net10.0，语言版本使用 C# 14」的约束。
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>14</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <AnalysisLevel>latest</AnalysisLevel>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <InvariantGlobalization>false</InvariantGlobalization>
+  </PropertyGroup>
+
+  <!--
+    可空引用类型警告一律视为错误：CLAUDE.md 要求「可空引用类型必须启用，
+    禁止使用 ! 抑制警告」，把 CS86xx 提升为错误可让该约束由编译器强制。
+  -->
+  <PropertyGroup>
+    <WarningsAsErrors>$(WarningsAsErrors);nullable</WarningsAsErrors>
+  </PropertyGroup>
+
+  <!-- 所有项目共用的基础元数据 -->
+  <PropertyGroup>
+    <Authors>PulseBot</Authors>
+    <Product>PulseBot</Product>
+    <VersionPrefix>0.1.0</VersionPrefix>
+  </PropertyGroup>
+
+</Project>

@@ -1,0 +1,16 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/PulseBot.Adapter.Console/PulseBot.Adapter.Console.csproj" />
+    <Project Path="src/PulseBot.Adapter.OneBotV11/PulseBot.Adapter.OneBot.csproj" />
+    <Project Path="src/PulseBot.Admin.Api/PulseBot.Admin.Api.csproj" />
+    <Project Path="src/PulseBot.Admin.Infrastructure/PulseBot.Admin.Infrastructure.csproj" />
+    <Project Path="src/PulseBot.Admin.Shared/PulseBot.Admin.Shared.csproj" />
+    <Project Path="src/PulseBot.Cli/PulseBot.Cli.csproj" />
+    <Project Path="src/PulseBot.Core/PulseBot.Core.csproj" />
+    <Project Path="src/PulseBot.Plugins.Echo/PulseBot.Plugins.Echo.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/PulseBot.Adapter.Console.Tests/PulseBot.Adapter.Console.Tests.csproj" />
+    <Project Path="tests/PulseBot.Core.Tests/PulseBot.Core.Tests.csproj" />
+  </Folder>
+</Solution>

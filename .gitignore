@@ -1,0 +1,28 @@
+# ---------- 构建输出 ----------
+# 编译中间产物与可执行文件，不应进入版本库（可随时由源码重新生成）。
+[Bb]in/
+[Oo]bj/
+artifacts/
+
+# ---------- IDE 与本地设置 ----------
+# 这些包含个人机器上的路径与偏好，不适合团队共享。
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+
+# ---------- 测试结果与覆盖率 ----------
+[Tt]est[Rr]esult*/
+coverage*.json
+coverage*.xml
+*.coverage
+
+# ---------- 前端（PulseBot.Admin.Web）----------
+node_modules/
+dist/
+
+# ---------- 日志与临时文件 ----------
+*.log
+logs/
+*.tmp

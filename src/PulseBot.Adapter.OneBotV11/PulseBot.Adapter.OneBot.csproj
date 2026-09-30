@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- OneBot 协议适配器：把 OneBot 原始事件转换为 Core 的 IEvent / MessageSegment。 -->
+  <PropertyGroup>
+    <RootNamespace>PulseBot.Adapter.OneBot</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\PulseBot.Core\PulseBot.Core.csproj" />
+  </ItemGroup>
+
+</Project>

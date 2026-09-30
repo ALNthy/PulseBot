@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- 示例插件：演示 IPlugin / [OnCommand] 的最小可用写法，可作为新插件的模板。 -->
+  <PropertyGroup>
+    <RootNamespace>PulseBot.Plugins.Echo</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\PulseBot.Core\PulseBot.Core.csproj" />
+  </ItemGroup>
+
+</Project>
