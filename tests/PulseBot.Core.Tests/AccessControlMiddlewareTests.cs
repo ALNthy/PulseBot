@@ -9,51 +9,43 @@ using PulseBot.Core.Permissions;
 namespace PulseBot.Core.Tests;
 
 /// <summary>
-/// 接入控制测试：黑/白名单的拦截与放行规则，以及它在管道中的优先级。
+/// 接入控制中间件测试：黑/白名单的拦截与放行规则，以及它在管道中的位置。
 /// </summary>
 [Trait("Category", "Unit")]
-public sealed class AccessControlHandlerTests
+public sealed class AccessControlMiddlewareTests
 {
-    /// <summary>黑名单内的用户被拦截并阻断传播。</summary>
+    /// <summary>黑名单内的用户被拦截，消息不会到达下游。</summary>
     [Fact]
     public async Task 用户黑名单拦截消息()
     {
-        var context = await RunAsync(
+        Assert.True(await IsBlockedAsync(
             new PermissionOptions { UserBlacklist = ["blocked"] },
-            CreateMessageEvent("blocked"));
-
-        Assert.True(context.IsPropagationStopped);
+            CreateMessageEvent("blocked")));
     }
 
     /// <summary>黑名单内的群被拦截。</summary>
     [Fact]
     public async Task 群黑名单拦截消息()
     {
-        var context = await RunAsync(
+        Assert.True(await IsBlockedAsync(
             new PermissionOptions { GroupBlacklist = ["bad-group"] },
-            CreateMessageEvent("u1", ConversationType.Group, "bad-group"));
-
-        Assert.True(context.IsPropagationStopped);
+            CreateMessageEvent("u1", ConversationType.Group, "bad-group")));
     }
 
     /// <summary>群黑名单不影响私聊（私聊没有群身份）。</summary>
     [Fact]
     public async Task 群黑名单不影响私聊()
     {
-        var context = await RunAsync(
+        Assert.False(await IsBlockedAsync(
             new PermissionOptions { GroupBlacklist = ["bad-group"] },
-            CreateMessageEvent("u1", ConversationType.Private, "bad-group"));
-
-        Assert.False(context.IsPropagationStopped);
+            CreateMessageEvent("u1", ConversationType.Private, "bad-group")));
     }
 
     /// <summary>白名单为空表示不限制，任何人都能通过。</summary>
     [Fact]
     public async Task 白名单为空时不限制()
     {
-        var context = await RunAsync(new PermissionOptions(), CreateMessageEvent("anyone"));
-
-        Assert.False(context.IsPropagationStopped);
+        Assert.False(await IsBlockedAsync(new PermissionOptions(), CreateMessageEvent("anyone")));
     }
 
     /// <summary>用户白名单非空时构成允许列表：名单外的人被拦截，名单内的人放行。</summary>
@@ -62,8 +54,8 @@ public sealed class AccessControlHandlerTests
     {
         var options = new PermissionOptions { UserWhitelist = ["allowed"] };
 
-        Assert.True((await RunAsync(options, CreateMessageEvent("outsider"))).IsPropagationStopped);
-        Assert.False((await RunAsync(options, CreateMessageEvent("allowed"))).IsPropagationStopped);
+        Assert.True(await IsBlockedAsync(options, CreateMessageEvent("outsider")));
+        Assert.False(await IsBlockedAsync(options, CreateMessageEvent("allowed")));
     }
 
     /// <summary>群白名单非空时只允许名单内的群，且不影响私聊。</summary>
@@ -72,14 +64,11 @@ public sealed class AccessControlHandlerTests
     {
         var options = new PermissionOptions { GroupWhitelist = ["good-group"] };
 
-        Assert.True((await RunAsync(options, CreateMessageEvent("u1", ConversationType.Group, "other-group")))
-            .IsPropagationStopped);
-        Assert.False((await RunAsync(options, CreateMessageEvent("u1", ConversationType.Group, "good-group")))
-            .IsPropagationStopped);
+        Assert.True(await IsBlockedAsync(options, CreateMessageEvent("u1", ConversationType.Group, "other-group")));
+        Assert.False(await IsBlockedAsync(options, CreateMessageEvent("u1", ConversationType.Group, "good-group")));
 
         // 私聊不受群白名单约束
-        Assert.False((await RunAsync(options, CreateMessageEvent("u1", ConversationType.Private, "other-group")))
-            .IsPropagationStopped);
+        Assert.False(await IsBlockedAsync(options, CreateMessageEvent("u1", ConversationType.Private, "other-group")));
     }
 
     /// <summary>超级管理员不受白名单限制，避免把自己锁在门外。</summary>
@@ -93,20 +82,17 @@ public sealed class AccessControlHandlerTests
             GroupWhitelist = ["some-group"],
         };
 
-        Assert.False((await RunAsync(options, CreateMessageEvent("root"))).IsPropagationStopped);
-        Assert.False((await RunAsync(options, CreateMessageEvent("root", ConversationType.Group, "other-group")))
-            .IsPropagationStopped);
+        Assert.False(await IsBlockedAsync(options, CreateMessageEvent("root")));
+        Assert.False(await IsBlockedAsync(options, CreateMessageEvent("root", ConversationType.Group, "other-group")));
     }
 
     /// <summary>超级管理员仍然受黑名单约束：黑名单是「不能用」，与权限无关。</summary>
     [Fact]
     public async Task 超级管理员仍受黑名单约束()
     {
-        var context = await RunAsync(
+        Assert.True(await IsBlockedAsync(
             new PermissionOptions { SuperAdmins = ["root"], UserBlacklist = ["root"] },
-            CreateMessageEvent("root"));
-
-        Assert.True(context.IsPropagationStopped);
+            CreateMessageEvent("root")));
     }
 
     /// <summary>同时命中黑名单与白名单时，黑名单优先。</summary>
@@ -119,29 +105,47 @@ public sealed class AccessControlHandlerTests
             UserWhitelist = ["u1"],
         };
 
-        Assert.True((await RunAsync(options, CreateMessageEvent("u1"))).IsPropagationStopped);
+        Assert.True(await IsBlockedAsync(options, CreateMessageEvent("u1")));
     }
 
-    /// <summary>接入控制的优先级必须严格高于命令分发处理器，否则被拉黑的人仍能触发命令。</summary>
+    /// <summary>接入控制的优先级必须严格高于命令分发中间件，否则被拉黑的人仍能触发命令。</summary>
     [Fact]
-    public void 优先级高于命令分发处理器()
+    public void 优先级高于命令分发中间件()
     {
-        var commandHandler = new CommandMessageHandler(new NoopCommandDispatcher());
+        var commandMiddleware = new CommandMiddleware(new NoopCommandDispatcher());
 
-        Assert.True(CreateHandler(new PermissionOptions()).Priority > commandHandler.Priority);
+        Assert.True(CreateMiddleware(new PermissionOptions()).Priority > commandMiddleware.Priority);
     }
 
     // ---------- 测试基础设施 ----------
 
-    private static async Task<EventContext> RunAsync(PermissionOptions options, MessageEvent messageEvent)
+    /// <summary>
+    /// 把一条消息送进「接入控制 → 下游」的最小管道，返回它是否被拦下。
+    /// </summary>
+    /// <remarks>
+    /// 中间件的拦截语义是「不调用续延」，因此用「下游是否被调用」来观测，而不是
+    /// <see cref="EventContext.IsPropagationStopped"/>——后者是处理器之间的机制，
+    /// 接入控制迁移到中间件层后已不再使用它。
+    /// </remarks>
+    private static async Task<bool> IsBlockedAsync(PermissionOptions options, MessageEvent messageEvent)
     {
-        var context = new EventContext();
-        await CreateHandler(options).HandleAsync(messageEvent, context, CancellationToken.None);
-        return context;
+        var reachedDownstream = false;
+
+        await CreateMiddleware(options).InvokeAsync(
+            messageEvent,
+            new EventContext(),
+            (_, _, _) =>
+            {
+                reachedDownstream = true;
+                return ValueTask.CompletedTask;
+            },
+            CancellationToken.None);
+
+        return !reachedDownstream;
     }
 
-    private static AccessControlHandler CreateHandler(PermissionOptions options) =>
-        new(Options.Create(options), NullLogger<AccessControlHandler>.Instance);
+    private static AccessControlMiddleware CreateMiddleware(PermissionOptions options) =>
+        new(Options.Create(options), NullLogger<AccessControlMiddleware>.Instance);
 
     private static MessageEvent CreateMessageEvent(
         string senderId,

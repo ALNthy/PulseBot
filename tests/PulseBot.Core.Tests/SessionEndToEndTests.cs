@@ -17,8 +17,8 @@ namespace PulseBot.Core.Tests;
 /// </summary>
 /// <remarks>
 /// 分层测试都是手工 new 对象，绕过了容器，因此发现不了循环依赖、重复注册这类只有真实装配
-/// 才会暴露的问题——本文件补的就是这一层。会话拦截器依赖会话存储，而存储若在图里绕到适配器，
-/// 就会与「适配器 → 事件入口 → 分发器 → 处理器」形成环，容器会直接拒绝解析。
+/// 才会暴露的问题——本文件补的就是这一层。会话拦截中间件依赖会话存储，而存储若在图里绕到适配器，
+/// 就会与「适配器 → 事件入口 → 分发器 → 中间件」形成环，容器会直接拒绝解析。
 /// </remarks>
 [Trait("Category", "Unit")]
 public sealed class SessionEndToEndTests
@@ -30,7 +30,7 @@ public sealed class SessionEndToEndTests
         using ServiceProvider provider = BuildProvider();
 
         Assert.NotNull(provider.GetRequiredService<ISessionStore>());
-        Assert.Single(provider.GetServices<IEventHandler<MessageEvent>>().OfType<SessionPromptHandler>());
+        Assert.Single(provider.GetServices<IEventMiddleware>().OfType<SessionPromptMiddleware>());
     }
 
     /// <summary>插件的提问命令发出问句后，用户的下一条消息被路由回该插件。</summary>
@@ -110,7 +110,7 @@ public sealed class SessionEndToEndTests
 
         using ServiceProvider provider = services.BuildServiceProvider();
 
-        Assert.Single(provider.GetServices<IEventHandler<MessageEvent>>().OfType<SessionPromptHandler>());
+        Assert.Single(provider.GetServices<IEventMiddleware>().OfType<SessionPromptMiddleware>());
     }
 
     // ---------- 测试基础设施 ----------

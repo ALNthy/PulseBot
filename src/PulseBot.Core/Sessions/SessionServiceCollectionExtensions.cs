@@ -1,7 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using PulseBot.Core.Dispatching;
-using PulseBot.Core.Events;
 
 namespace PulseBot.Core.Sessions;
 
@@ -38,8 +37,8 @@ public static class SessionServiceCollectionExtensions
         services.TryAddSingleton(TimeProvider.System);
         services.TryAddSingleton<ISessionStore, InMemorySessionStore>();
 
-        // 等待回答的消息优先于命令被处理，理由见 SessionPromptHandler 的说明。
-        services.AddEventHandler<MessageEvent, SessionPromptHandler>();
+        // 等待回答的消息优先于命令被处理，理由见 SessionPromptMiddleware 的说明。
+        services.AddEventMiddleware<SessionPromptMiddleware>();
 
         return services;
     }

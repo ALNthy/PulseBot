@@ -91,6 +91,7 @@ public sealed class EventDispatcherTests
                 new HandlerRegistration<MessageEvent>([new RecordingHandler(log, "message")]),
                 new HandlerRegistration<OtherEvent>([new OtherRecordingHandler(log)]),
             ],
+            [],
             NullLogger<EventDispatcher>.Instance);
 
         await dispatcher.DispatchAsync(CreateMessageEvent(), CancellationToken.None);
@@ -116,6 +117,7 @@ public sealed class EventDispatcherTests
     private static EventDispatcher CreateDispatcher(params IEventHandler<MessageEvent>[] handlers) =>
         new(
             [new HandlerRegistration<MessageEvent>(handlers)],
+            [],                                                         // 本组测试不涉及中间件
             NullLogger<EventDispatcher>.Instance);
 
     private static MessageEvent CreateMessageEvent() => new()

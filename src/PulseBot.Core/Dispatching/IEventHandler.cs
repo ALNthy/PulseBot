@@ -23,10 +23,9 @@ public interface IEventHandler<TEvent> where TEvent : IEvent
     /// 优先级：数值大者先执行，默认为 0。
     /// </summary>
     /// <remarks>
-    /// 框架内建的处理器占据 <see cref="int.MaxValue"/> 起的三档，且互不相同，
-    /// 依次为：接入控制（<c>AccessControlHandler</c>）、会话拦截（<c>SessionPromptHandler</c>）、
-    /// 命令分发（<c>CommandMessageHandler</c>）。因此它们的执行顺序只由数值决定，
-    /// 与 DI 注册顺序无关。同优先级的处理器按注册顺序执行。
+    /// 同优先级的处理器按注册顺序执行。框架内建的三个机制（接入控制、会话拦截、命令分发）
+    /// 不在这里参与排序——它们位于处理器列表之外的中间件层，见 <see cref="IEventMiddleware"/>。
+    /// 处理器列表里只有业务监听器。
     /// </remarks>
     int Priority => 0;
 

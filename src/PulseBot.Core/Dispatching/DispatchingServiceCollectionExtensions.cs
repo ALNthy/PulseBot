@@ -12,7 +12,7 @@ namespace PulseBot.Core.Dispatching;
 public static class DispatchingServiceCollectionExtensions
 {
     /// <summary>
-    /// 注册事件分发服务：分发器、事件入口、默认发送实现，以及「消息 → 命令」的内建桥接处理器。
+    /// 注册事件分发服务：分发器、事件入口、默认发送实现，以及「消息 → 命令」的内建桥接中间件。
     /// </summary>
     /// <remarks>
     /// 命令分发器是事件管道的下游消费者，因此这里顺带确保命令服务在位
@@ -39,8 +39,8 @@ public static class DispatchingServiceCollectionExtensions
             provider.GetRequiredService<EventDispatcher>(),
             () => provider.GetRequiredService<IMessageSender>()));
 
-        // 内建桥接：命中的命令消息会被消费并阻断传播，不再流向下游监听器。
-        services.AddEventHandler<MessageEvent, CommandMessageHandler>();
+        // 内建桥接：命中的命令消息会被消费，管道终止，不再流向下游监听器。
+        services.AddEventMiddleware<CommandMiddleware>();
 
         return services;
     }
@@ -66,6 +66,26 @@ public static class DispatchingServiceCollectionExtensions
         // 每种事件类型只需一个注册项：它会把该类型的全部处理器一次性收拢并排序。
         services.TryAddEnumerable(
             ServiceDescriptor.Singleton<IHandlerRegistration, HandlerRegistration<TEvent>>());
+
+        return services;
+    }
+
+    /// <summary>
+    /// 注册一个事件中间件。
+    /// </summary>
+    /// <remarks>
+    /// 中间件包裹整条分发链，按 <see cref="IEventMiddleware.Priority"/> 由外到内排序，
+    /// 可以前处理、改写事件、后处理，也可以不调用续延来终止管道。宿主与插件都可以注册自己的中间件。
+    /// 同一中间件重复注册会被自动去重。
+    /// </remarks>
+    /// <typeparam name="TMiddleware">中间件实现类型，由 DI 构造（构造函数注入可用）。</typeparam>
+    public static IServiceCollection AddEventMiddleware<TMiddleware>(this IServiceCollection services)
+        where TMiddleware : class, IEventMiddleware
+    {
+        ArgumentNullException.ThrowIfNull(services);
+
+        // 与 AddEventHandler 同样是 TryAddEnumerable：重复调用不会让中间件执行两次。
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IEventMiddleware, TMiddleware>());
 
         return services;
     }

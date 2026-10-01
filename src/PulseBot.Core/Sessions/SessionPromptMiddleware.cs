@@ -7,7 +7,7 @@ using PulseBot.Core.Events;
 namespace PulseBot.Core.Sessions;
 
 /// <summary>
-/// 内建处理器：把「正在等待回答」的消息从正常管道里截获，路由回提问的插件。
+/// 内建中间件：把「正在等待回答」的消息从管道里截获，路由回提问的插件。
 /// </summary>
 /// <remarks>
 /// <para>
@@ -15,9 +15,9 @@ namespace PulseBot.Core.Sessions;
 /// </para>
 /// <para>
 /// 优先级取 <c>int.MaxValue - 1</c>，恰好是三档里的中间一档：
-/// **后于**接入控制（<c>AccessControlHandler</c> 取 <see cref="int.MaxValue"/>）——
+/// **后于**接入控制（<c>AccessControlMiddleware</c> 取 <see cref="int.MaxValue"/>）——
 /// 被拉黑的人不该有机会与机器人对话；
-/// **先于**命令分发（<c>CommandMessageHandler</c> 取 <c>int.MaxValue - 2</c>）——
+/// **先于**命令分发（<c>CommandMiddleware</c> 取 <c>int.MaxValue - 2</c>）——
 /// 等待回答期间的「回答」必须优先于「命令」。否则在无前缀命令默认开启的情况下，
 /// 像「复读 你好」这种恰好以命令名开头的正常回答会被命令分发夺走，
 /// 插件永远收不到答案，而且没有任何报错。
@@ -30,21 +30,21 @@ namespace PulseBot.Core.Sessions;
 /// 宿主既不需要注册它，也不应直接依赖它。
 /// </para>
 /// </remarks>
-public sealed class SessionPromptHandler : IEventHandler<MessageEvent>
+public sealed class SessionPromptMiddleware : MessageEventMiddleware
 {
     private readonly ISessionStore _sessions;
     private readonly FrozenSet<string> _cancelCommands;
     private readonly string _cancelMessage;
-    private readonly ILogger<SessionPromptHandler> _logger;
+    private readonly ILogger<SessionPromptMiddleware> _logger;
 
-    /// <summary>创建等待态拦截器。</summary>
+    /// <summary>创建等待态拦截中间件。</summary>
     /// <param name="sessions">会话存储。</param>
     /// <param name="options">会话配置（取消词与取消提示语）。</param>
     /// <param name="logger">结构化日志。</param>
-    public SessionPromptHandler(
+    public SessionPromptMiddleware(
         ISessionStore sessions,
         IOptions<SessionOptions> options,
-        ILogger<SessionPromptHandler> logger)
+        ILogger<SessionPromptMiddleware> logger)
     {
         ArgumentNullException.ThrowIfNull(sessions);
         ArgumentNullException.ThrowIfNull(options);
@@ -64,10 +64,14 @@ public sealed class SessionPromptHandler : IEventHandler<MessageEvent>
     }
 
     /// <inheritdoc />
-    public int Priority => int.MaxValue - 1;
+    public override int Priority => int.MaxValue - 1;
 
     /// <inheritdoc />
-    public async ValueTask HandleAsync(MessageEvent @event, EventContext context, CancellationToken cancellationToken)
+    public override async ValueTask InvokeAsync(
+        MessageEvent @event,
+        EventContext context,
+        EventMiddlewareNext next,
+        CancellationToken cancellationToken)
     {
         // 热路径：每条消息都要经过这里。只读查找，查不到会话就一定没有等待中的提问，
         // 绝不能改用 GetOrCreateAsync——那会让每个说过话的用户都在存储里留下一个会话对象。
@@ -77,21 +81,21 @@ public sealed class SessionPromptHandler : IEventHandler<MessageEvent>
 
         if (session is null)
         {
+            await next(@event, context, cancellationToken).ConfigureAwait(false);
             return;
         }
 
         // 原子取走等待态（内部已完成超时判定）。取不到有两种可能：本来就没有等待，
-        // 或等待已超时并被清除——两种情况都意味着这条消息该交还给正常管道处理。
+        // 或等待已超时并被清除——两种情况都意味着这条消息该交还给内层管道处理。
         if (!session.TryConsumePrompt(out PendingPrompt? prompt))
         {
+            await next(@event, context, cancellationToken).ConfigureAwait(false);
             return;
         }
 
-        // 先阻断传播，再执行后续逻辑：等待态此刻已被消费，这条消息只属于这个回调。
-        // 与 CommandMessageHandler「成功处理才阻断」的语义不同——这里消息的归属已经确定，
+        // 不再调用续延：等待态此刻已被消费，这条消息只属于这个回调，管道到此为止。
+        // 与 CommandMiddleware「命中命令才终止」的语义不同——这里消息的归属已经确定，
         // 即便回调抛异常也不应让它回流到命令管道被执行第二遍。
-        context.StopPropagation();
-
         var plainText = @event.PlainText.Trim();
         if (_cancelCommands.Contains(plainText))
         {

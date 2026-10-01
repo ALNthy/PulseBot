@@ -11,7 +11,7 @@ using PulseBot.Core.Sessions;
 namespace PulseBot.Core.Tests;
 
 /// <summary>
-/// 等待态拦截器测试：消息如何被路由回提问的插件、超时与取消的处理，
+/// 等待态拦截中间件测试：消息如何被路由回提问的插件、超时与取消的处理，
 /// 以及它在管道中的优先级位置。
 /// </summary>
 /// <remarks>
@@ -191,8 +191,8 @@ public sealed class SessionPromptTests
     }
 
     /// <summary>
-    /// 回调抛异常时消息不会回流：异常由 EventDispatcher 统一隔离并记录，
-    /// 但因为等待态在调用回调之前就被取走、传播也已阻断，普通监听器不会再看到这条消息。
+    /// 回调抛异常时消息不会回流：异常由 EventDispatcher 的中间件异常隔离统一记录，
+    /// 但因为等待态在调用回调之前就被取走、续延也从未被调用，普通监听器不会再看到这条消息。
     /// </summary>
     [Fact]
     public async Task 回调抛异常时消息也不会回流()
@@ -212,13 +212,13 @@ public sealed class SessionPromptTests
     [Fact]
     public void 会话拦截优先级介于接入控制与命令分发之间()
     {
-        var accessPriority = new AccessControlHandler(
+        var accessPriority = new AccessControlMiddleware(
             Options.Create(new PermissionOptions()),
-            NullLogger<AccessControlHandler>.Instance).Priority;
+            NullLogger<AccessControlMiddleware>.Instance).Priority;
 
-        var sessionPriority = CreateHandler(new FakeTimeProvider(StartTime)).Priority;
+        var sessionPriority = CreateMiddleware(new FakeTimeProvider(StartTime)).Priority;
 
-        var commandPriority = new CommandMessageHandler(new NoopCommandDispatcher()).Priority;
+        var commandPriority = new CommandMiddleware(new NoopCommandDispatcher()).Priority;
 
         Assert.True(accessPriority > sessionPriority);
         Assert.True(sessionPriority > commandPriority);
@@ -253,19 +253,18 @@ public sealed class SessionPromptTests
         });
 
         var listener = new RecordingListener();
-        IEventHandler<MessageEvent>[] handlers =
-        [
-            listener,                                                       // 优先级 0
-            CreateHandler(time, store, sessionOptions),                      // int.MaxValue - 1
-            new AccessControlHandler(                                        // int.MaxValue
-                Options.Create(permissionOptions),
-                NullLogger<AccessControlHandler>.Instance),
-        ];
+        IEventHandler<MessageEvent>[] handlers = [listener];
 
         var sender = new FakeSender();
         var publisher = new EventPublisher(
             new EventDispatcher(
                 [new HandlerRegistration<MessageEvent>(handlers)],
+                [
+                    CreateMiddleware(time, store, sessionOptions),           // int.MaxValue - 1
+                    new AccessControlMiddleware(                             // int.MaxValue
+                        Options.Create(permissionOptions),
+                        NullLogger<AccessControlMiddleware>.Instance),
+                ],
                 NullLogger<EventDispatcher>.Instance),
             () => sender);
 
@@ -307,7 +306,7 @@ public sealed class SessionPromptTests
 
     /// <summary>
     /// 组装「事件入口 → 会话拦截 → 普通监听器」的最小管道。
-    /// 处理器**故意不按优先级顺序**传入，排序由 <see cref="HandlerRegistration{TEvent}"/> 负责。
+    /// 会话拦截位于中间件层，普通监听器是处理器列表里唯一的成员。
     /// </summary>
     private static Harness CreateHarness(SessionOptions? options = null)
     {
@@ -319,39 +318,38 @@ public sealed class SessionPromptTests
             time,
             NullLogger<InMemorySessionStore>.Instance);
 
-        SessionPromptHandler handler = CreateHandler(time, store, sessionOptions);
+        SessionPromptMiddleware middleware = CreateMiddleware(time, store, sessionOptions);
         var listener = new RecordingListener();
         var sender = new FakeSender();
 
-        IEventHandler<MessageEvent>[] handlers = [listener, handler];
-
         var dispatcher = new EventDispatcher(
-            [new HandlerRegistration<MessageEvent>(handlers)],
+            [new HandlerRegistration<MessageEvent>([listener])],
+            [middleware],
             NullLogger<EventDispatcher>.Instance);
 
         return new Harness(
             new EventPublisher(dispatcher, () => sender),
-            handler,
+            middleware,
             store,
             sender,
             listener,
             time);
     }
 
-    private static SessionPromptHandler CreateHandler(
+    private static SessionPromptMiddleware CreateMiddleware(
         TimeProvider timeProvider,
         InMemorySessionStore? store = null,
         SessionOptions? options = null)
     {
         var sessionOptions = options ?? new SessionOptions();
 
-        return new SessionPromptHandler(
+        return new SessionPromptMiddleware(
             store ?? new InMemorySessionStore(
                 Options.Create(sessionOptions),
                 timeProvider,
                 NullLogger<InMemorySessionStore>.Instance),
             Options.Create(sessionOptions),
-            NullLogger<SessionPromptHandler>.Instance);
+            NullLogger<SessionPromptMiddleware>.Instance);
     }
 
     private static SessionKey CreateKey(string userId)
@@ -372,7 +370,7 @@ public sealed class SessionPromptTests
     /// <summary>一次装配好的管道，以及其中可供断言的对象。</summary>
     private sealed record Harness(
         IEventPublisher Publisher,
-        SessionPromptHandler Handler,
+        SessionPromptMiddleware Middleware,
         InMemorySessionStore Store,
         FakeSender Sender,
         RecordingListener Listener,

@@ -1,7 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using PulseBot.Core.Dispatching;
-using PulseBot.Core.Events;
 
 namespace PulseBot.Core.Permissions;
 
@@ -32,8 +31,8 @@ public static class PermissionServiceCollectionExtensions
 
         services.TryAddSingleton<IPermissionService, InMemoryPermissionService>();
 
-        // 接入控制是消息的第一道闸门，注册为事件处理器即可，无需侵入事件分发实现。
-        services.AddEventHandler<MessageEvent, AccessControlHandler>();
+        // 接入控制是消息的第一道闸门，注册为事件中间件即可，无需侵入事件分发实现。
+        services.AddEventMiddleware<AccessControlMiddleware>();
 
         return services;
     }

@@ -93,6 +93,7 @@ public sealed class EventPublisherTests
         => new(
             new EventDispatcher(
                 [new HandlerRegistration<TEvent>(handlers)],
+                [],
                 NullLogger<EventDispatcher>.Instance),
             () => sender);
 

@@ -83,8 +83,9 @@ public sealed class EndToEndFlowTests
     /// 组装一条完整的消息管道：事件入口 → 接入控制 → 命令分发 → 普通监听器。
     /// </summary>
     /// <remarks>
-    /// 处理器**故意不按优先级顺序**传入：排序由 <see cref="HandlerRegistration{TEvent}"/> 负责，
-    /// 若它失效，本组测试会立刻失败——这正是端到端测试该覆盖的接缝。
+    /// 中间件**故意不按优先级顺序**传入（命令分发排在接入控制之前）：排序由
+    /// <see cref="EventDispatcher"/> 负责，若它失效，本组测试会立刻失败——
+    /// 这正是端到端测试该覆盖的接缝。
     /// </remarks>
     private static Harness CreateHarness(PermissionOptions? options = null)
     {
@@ -101,19 +102,20 @@ public sealed class EndToEndFlowTests
         commandDispatcher.RegisterPluginCommands(plugin);
 
         var listener = new RecordingListener();
-        IEventHandler<MessageEvent>[] handlers =
-        [
-            listener,                                                                  // 优先级 0
-            new CommandMessageHandler(commandDispatcher),                               // int.MaxValue - 2
-            new AccessControlHandler(                                                   // int.MaxValue
-                Options.Create(permissionOptions),
-                NullLogger<AccessControlHandler>.Instance),
-        ];
+
+        // 处理器列表里只剩业务监听器；三个框架机制都在外层的中间件层。
+        IEventHandler<MessageEvent>[] handlers = [listener];
 
         var sender = new FakeSender();
         var publisher = new EventPublisher(
             new EventDispatcher(
                 [new HandlerRegistration<MessageEvent>(handlers)],
+                [
+                    new CommandMiddleware(commandDispatcher),                           // int.MaxValue - 2
+                    new AccessControlMiddleware(                                        // int.MaxValue
+                        Options.Create(permissionOptions),
+                        NullLogger<AccessControlMiddleware>.Instance),
+                ],
                 NullLogger<EventDispatcher>.Instance),
             () => sender);
 

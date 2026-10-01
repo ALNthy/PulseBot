@@ -8,8 +8,8 @@ using PulseBot.Core.Messages;
 namespace PulseBot.Core.Permissions;
 
 /// <summary>
-/// 接入控制拦截器：在事件管道的**最前端**执行黑/白名单过滤，
-/// 被拦截的消息直接阻断传播，不会到达命令分发或任何插件。
+/// 接入控制中间件：位于事件管道的**最外层**做黑/白名单过滤，
+/// 被拦截的消息不调用续延，因此不会到达会话拦截、命令分发或任何插件。
 /// </summary>
 /// <remarks>
 /// <para>判定规则（自上而下，先命中先返回）：</para>
@@ -29,19 +29,19 @@ namespace PulseBot.Core.Permissions;
 /// 应由后台管理把名单变更落库并驱动宿主重建配置。
 /// </para>
 /// </remarks>
-public sealed class AccessControlHandler : IEventHandler<MessageEvent>
+public sealed class AccessControlMiddleware : MessageEventMiddleware
 {
     private readonly FrozenSet<string> _userBlacklist;
     private readonly FrozenSet<string> _userWhitelist;
     private readonly FrozenSet<string> _groupBlacklist;
     private readonly FrozenSet<string> _groupWhitelist;
     private readonly FrozenSet<string> _superAdmins;
-    private readonly ILogger<AccessControlHandler> _logger;
+    private readonly ILogger<AccessControlMiddleware> _logger;
 
-    /// <summary>创建接入控制拦截器。</summary>
+    /// <summary>创建接入控制中间件。</summary>
     /// <param name="options">权限配置（黑白名单与超级管理员名单）。</param>
     /// <param name="logger">结构化日志。</param>
-    public AccessControlHandler(IOptions<PermissionOptions> options, ILogger<AccessControlHandler> logger)
+    public AccessControlMiddleware(IOptions<PermissionOptions> options, ILogger<AccessControlMiddleware> logger)
     {
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(logger);
@@ -58,20 +58,25 @@ public sealed class AccessControlHandler : IEventHandler<MessageEvent>
     }
 
     /// <summary>
-    /// 取 <see cref="int.MaxValue"/>：接入控制是事件管道的最高优先级，
-    /// 必须**先于**会话拦截（<c>SessionPromptHandler</c> 取 <c>int.MaxValue - 1</c>）
-    /// 与命令分发（<see cref="CommandMessageHandler"/> 取 <c>int.MaxValue - 2</c>）执行，
+    /// 取 <see cref="int.MaxValue"/>：接入控制是事件管道的最外层，
+    /// 必须**先于**会话拦截（<c>SessionPromptMiddleware</c> 取 <c>int.MaxValue - 1</c>）
+    /// 与命令分发（<c>CommandMiddleware</c> 取 <c>int.MaxValue - 2</c>）执行，
     /// 否则被拉黑的人仍能与机器人对话或触发命令。
+    /// 三档取值互不相同，因此顺序只由优先级数值决定，与 DI 注册顺序无关。
     /// </summary>
-    public int Priority => int.MaxValue;
+    public override int Priority => int.MaxValue;
 
     /// <inheritdoc />
-    public ValueTask HandleAsync(MessageEvent @event, EventContext context, CancellationToken cancellationToken)
+    public override ValueTask InvokeAsync(
+        MessageEvent @event,
+        EventContext context,
+        EventMiddlewareNext next,
+        CancellationToken cancellationToken)
     {
         var reason = GetBlockReason(@event);
         if (reason is null)
         {
-            return ValueTask.CompletedTask;
+            return next(@event, context, cancellationToken);
         }
 
         _logger.LogWarning(
@@ -81,9 +86,7 @@ public sealed class AccessControlHandler : IEventHandler<MessageEvent>
             @event.Conversation,
             @event.MessageId);
 
-        // 阻断传播：被拦截的消息对命令分发与所有插件都不存在。
-        context.StopPropagation();
-
+        // 终止管道：被拦截的消息对会话拦截、命令分发与所有插件都不存在。
         return ValueTask.CompletedTask;
     }
 

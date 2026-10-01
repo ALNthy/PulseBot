@@ -33,6 +33,35 @@ public sealed class MessageTests
         Assert.Equal(2, message.Segments.Count);
     }
 
+    /// <summary>
+    /// 多段消息的纯文本渲染结果被缓存：反复读取返回同一个字符串引用，拼接只发生一次。
+    /// 一条消息在事件管道里会被多个处理器依次读取，重复拼接是热路径上的真实开销。
+    /// </summary>
+    [Fact]
+    public void 多段消息的渲染结果被缓存()
+    {
+        var message = new Message(new AtSegment("123", "某人"), new TextSegment(" 你好"));
+
+        string first = message.ToString();
+
+        Assert.Same(first, message.ToString());
+        Assert.Equal("@某人 你好", first);
+    }
+
+    /// <summary>
+    /// 并发首次读取同一实例的纯文本结果一致：缓存写入免锁，最坏情况只是多渲染一份等价结果。
+    /// </summary>
+    [Fact]
+    public async Task 并发首次读取纯文本结果一致()
+    {
+        var message = new Message(new TextSegment("A"), new TextSegment("B"), new TextSegment("C"));
+
+        string[] results = await Task.WhenAll(
+            Enumerable.Range(0, 16).Select(_ => Task.Run(() => message.ToString())));
+
+        Assert.All(results, text => Assert.Equal("ABC", text));
+    }
+
     /// <summary>隐式转换：字符串可直接当作消息使用。</summary>
     [Fact]
     public void 字符串隐式转换为消息()
