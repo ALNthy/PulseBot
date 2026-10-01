@@ -23,8 +23,10 @@ public interface IEventHandler<TEvent> where TEvent : IEvent
     /// 优先级：数值大者先执行，默认为 0。
     /// </summary>
     /// <remarks>
-    /// 框架内建的命令分发处理器取 <see cref="int.MaxValue"/>，以确保命令先于普通消息监听器处理，
-    /// 并在命中后阻断传播。同优先级的处理器按注册顺序执行。
+    /// 框架内建的处理器占据 <see cref="int.MaxValue"/> 起的三档，且互不相同，
+    /// 依次为：接入控制（<c>AccessControlHandler</c>）、会话拦截（<c>SessionPromptHandler</c>）、
+    /// 命令分发（<c>CommandMessageHandler</c>）。因此它们的执行顺序只由数值决定，
+    /// 与 DI 注册顺序无关。同优先级的处理器按注册顺序执行。
     /// </remarks>
     int Priority => 0;
 

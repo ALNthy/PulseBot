@@ -104,7 +104,7 @@ public sealed class EndToEndFlowTests
         IEventHandler<MessageEvent>[] handlers =
         [
             listener,                                                                  // 优先级 0
-            new CommandMessageHandler(commandDispatcher),                               // int.MaxValue - 1
+            new CommandMessageHandler(commandDispatcher),                               // int.MaxValue - 2
             new AccessControlHandler(                                                   // int.MaxValue
                 Options.Create(permissionOptions),
                 NullLogger<AccessControlHandler>.Instance),

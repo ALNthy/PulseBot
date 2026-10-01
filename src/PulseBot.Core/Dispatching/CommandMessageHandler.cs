@@ -11,9 +11,13 @@ namespace PulseBot.Core.Dispatching;
 /// 由 <c>AddPulseBotDispatching()</c> 自动注册，插件与宿主都无需手动登记。
 /// </para>
 /// <para>
-/// 优先级取 <c>int.MaxValue - 1</c>：必须**先于**普通消息监听器（默认优先级 0）处理，
-/// 但**后于**接入控制拦截器（<c>AccessControlHandler</c> 取 <see cref="int.MaxValue"/>）——
-/// 被拉黑的人不该有机会触发命令。
+/// 优先级取 <c>int.MaxValue - 2</c>，是内建三档里最低的一档，必须**先于**普通消息监听器
+/// （默认优先级 0）处理，但**后于**接入控制（<c>AccessControlHandler</c> 取
+/// <see cref="int.MaxValue"/>）与会话拦截（<c>SessionPromptHandler</c> 取 <c>int.MaxValue - 1</c>）：
+/// 被拉黑的人不该有机会触发命令，正在等待回答的用户所说的话也不该被当成命令抢走。
+/// 三档取值互不相同，因此执行顺序只由数值决定，与注册顺序无关。
+/// </para>
+/// <para>
 /// 命中后调用 <see cref="EventContext.StopPropagation"/> 阻断传播，
 /// 避免已作为命令被消费的消息又被监听器当作普通聊天处理一遍。
 /// </para>
@@ -35,7 +39,7 @@ public sealed class CommandMessageHandler : IEventHandler<MessageEvent>
     }
 
     /// <inheritdoc />
-    public int Priority => int.MaxValue - 1;
+    public int Priority => int.MaxValue - 2;
 
     /// <inheritdoc />
     public async ValueTask HandleAsync(MessageEvent @event, EventContext context, CancellationToken cancellationToken)

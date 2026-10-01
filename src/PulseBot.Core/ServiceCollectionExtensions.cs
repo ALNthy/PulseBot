@@ -2,6 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using PulseBot.Core.Adapters;
 using PulseBot.Core.Dispatching;
 using PulseBot.Core.Plugins;
+using PulseBot.Core.Sessions;
 
 namespace PulseBot.Core;
 
@@ -11,7 +12,8 @@ namespace PulseBot.Core;
 public static class ServiceCollectionExtensions
 {
     /// <summary>
-    /// 注册 PulseBot 内核的全部服务：事件分发、命令分发、权限与接入控制、插件系统与消息发送。
+    /// 注册 PulseBot 内核的全部服务：事件分发、命令分发、权限与接入控制、插件系统、
+    /// 消息发送与交互会话。
     /// </summary>
     /// <remarks>
     /// <para>
@@ -24,8 +26,12 @@ public static class ServiceCollectionExtensions
     /// </code>
     /// <para>
     /// 各子域扩展（<c>AddPulseBotDispatching</c> / <c>AddPulseBotCommands</c> /
-    /// <c>AddPulseBotPermissions</c> / <c>AddPulseBotPlugins</c>）都是幂等的，
-    /// 单独调用其中之一也能得到可用的最小装配（权限域随命令域自动就位）。
+    /// <c>AddPulseBotPermissions</c> / <c>AddPulseBotPlugins</c> / <c>AddPulseBotSessions</c>）
+    /// 都是幂等的，单独调用其中之一也能得到可用的最小装配（权限域随命令域自动就位）。
+    /// </para>
+    /// <para>
+    /// 调用顺序不影响事件处理器的执行顺序：内建处理器各占一个互不相同的优先级
+    /// （接入控制 → 会话拦截 → 命令分发），不依赖注册先后。
     /// </para>
     /// </remarks>
     public static IServiceCollection AddPulseBot(this IServiceCollection services)
@@ -34,6 +40,7 @@ public static class ServiceCollectionExtensions
 
         services.AddPulseBotDispatching();
         services.AddPulseBotPlugins();
+        services.AddPulseBotSessions();
 
         return services;
     }

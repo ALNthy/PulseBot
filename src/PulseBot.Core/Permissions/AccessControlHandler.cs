@@ -58,8 +58,10 @@ public sealed class AccessControlHandler : IEventHandler<MessageEvent>
     }
 
     /// <summary>
-    /// 取 <see cref="int.MaxValue"/>：接入控制必须**先于**命令分发（<see cref="CommandMessageHandler"/>
-    /// 取 <c>int.MaxValue - 1</c>）执行，否则被拉黑的人仍能触发命令。
+    /// 取 <see cref="int.MaxValue"/>：接入控制是事件管道的最高优先级，
+    /// 必须**先于**会话拦截（<c>SessionPromptHandler</c> 取 <c>int.MaxValue - 1</c>）
+    /// 与命令分发（<see cref="CommandMessageHandler"/> 取 <c>int.MaxValue - 2</c>）执行，
+    /// 否则被拉黑的人仍能与机器人对话或触发命令。
     /// </summary>
     public int Priority => int.MaxValue;
 

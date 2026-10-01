@@ -6,6 +6,7 @@ using PulseBot.Cli;
 using PulseBot.Core;
 using PulseBot.Core.Permissions;
 using PulseBot.Core.Plugins;
+using PulseBot.Core.Sessions;
 using PulseBot.Plugins.Echo;
 
 // PulseBot 宿主入口：装配内核 + 适配器 + 插件，然后常驻运行直到收到关闭信号（Ctrl+C）。
@@ -29,6 +30,8 @@ builder.Services.Configure<PermissionOptions>(
     builder.Configuration.GetSection(PermissionOptions.SectionName));
 builder.Services.Configure<ConsoleAdapterOptions>(
     builder.Configuration.GetSection(ConsoleAdapterOptions.SectionName));
+builder.Services.Configure<SessionOptions>(
+    builder.Configuration.GetSection(SessionOptions.SectionName));
 
 // 插件：逐个显式登记，由 PluginManager 在启动时统一加载并扫描 [OnCommand]。
 builder.Services.AddPlugin<EchoPlugin>();
@@ -40,6 +43,9 @@ builder.Services.AddConsoleAdapter();
 
 // 把插件与适配器的启停挂到宿主生命周期上。
 builder.Services.AddHostedService<PulseBotLifecycleService>();
+
+// 交互会话的空闲回收：Core 不做后台任务，由宿主按配置间隔驱动。
+builder.Services.AddHostedService<SessionCleanupService>();
 
 IHost host = builder.Build();
 
