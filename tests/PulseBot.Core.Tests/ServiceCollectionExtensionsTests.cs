@@ -6,6 +6,7 @@ using PulseBot.Core.Adapters;
 using PulseBot.Core.Dispatching;
 using PulseBot.Core.Events;
 using PulseBot.Core.Messages;
+using PulseBot.Core.Plugins;
 using PulseBot.Core.Scheduling;
 
 namespace PulseBot.Core.Tests;
@@ -53,6 +54,59 @@ public sealed class ServiceCollectionExtensionsTests
         using ServiceProvider provider = BuildProvider();
 
         Assert.NotNull(provider.GetRequiredService<Scheduler>());
+    }
+
+    /// <summary>
+    /// 回归测试：注册出站与插件生命周期中间件后，容器仍能解析发送器与插件管理器。
+    /// </summary>
+    /// <remarks>
+    /// 中间件是这两者的构造依赖；若某个中间件反过来依赖被包裹的服务，容器会检测到循环依赖。
+    /// 这里用真实容器确认这条接缝是通的。
+    /// </remarks>
+    [Fact]
+    public void 注册中间件后容器仍能解析发送器与插件管理器()
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton(typeof(ILogger<>), typeof(NullLogger<>));
+        services.AddPulseBot();
+        services.AddSingleton<IAdapter, StubAdapter>();
+        services.AddOutboundMiddleware<PassthroughOutboundMiddleware>();
+        services.AddPluginLifecycleMiddleware<PassthroughPluginLifecycleMiddleware>();
+
+        using ServiceProvider provider = services.BuildServiceProvider();
+
+        Assert.NotNull(provider.GetRequiredService<IMessageSender>());
+        Assert.NotNull(provider.GetRequiredService<PluginManager>());
+    }
+
+    /// <summary>
+    /// 端到端：出站中间件在真实容器里确实参与了发送——适配器事件的回复经过改写才抵达适配器。
+    /// </summary>
+    [Fact]
+    public async Task 回复经过出站中间件改写后才抵达适配器()
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton(typeof(ILogger<>), typeof(NullLogger<>));
+        services.AddPulseBot();
+        services.AddSingleton<IAdapter, StubAdapter>();
+        services.AddOutboundMiddleware<StampedMiddleware>();
+        services.AddEventHandler<MessageEvent, EchoBackHandler>();
+
+        await using ServiceProvider provider = services.BuildServiceProvider();
+        var adapter = (StubAdapter)provider.GetRequiredService<IEnumerable<IAdapter>>().Single();
+
+        await adapter.PublishAsync(
+            new MessageEvent
+            {
+                Conversation = new ConversationId(StubAdapter.StubPlatform, ConversationType.Private, "u1"),
+                Message = Message.Text("你好"),
+                MessageId = "msg-1",
+                SenderId = "u1",
+            },
+            CancellationToken.None);
+
+        // 处理器原样回复，标记由中间件在消息出站前加上。
+        Assert.Equal(["reply:msg-1:[MW]你好"], adapter.Sent);
     }
 
     /// <summary>
@@ -129,5 +183,35 @@ public sealed class ServiceCollectionExtensionsTests
         /// <summary>供测试驱动：像真实适配器那样把一条平台消息送进事件管道。</summary>
         public ValueTask PublishAsync(MessageEvent messageEvent, CancellationToken cancellationToken)
             => publisher.PublishAsync(messageEvent, cancellationToken);
+    }
+
+    /// <summary>原样放行的出站中间件；仅用于验证装配不产生循环依赖。</summary>
+    private sealed class PassthroughOutboundMiddleware : IOutboundMiddleware
+    {
+        public ValueTask<SendResult> InvokeAsync(
+            OutboundMessage message,
+            OutboundMiddlewareNext next,
+            CancellationToken cancellationToken)
+            => next(message, cancellationToken);
+    }
+
+    /// <summary>原样放行的插件生命周期中间件；仅用于验证装配不产生循环依赖。</summary>
+    private sealed class PassthroughPluginLifecycleMiddleware : IPluginLifecycleMiddleware
+    {
+        public ValueTask InvokeAsync(
+            PluginLifecycleContext context,
+            PluginLifecycleNext next,
+            CancellationToken cancellationToken)
+            => next(context, cancellationToken);
+    }
+
+    /// <summary>给所有出站消息加标记的中间件；用于验证真实容器里中间件确实参与了发送。</summary>
+    private sealed class StampedMiddleware : IOutboundMiddleware
+    {
+        public ValueTask<SendResult> InvokeAsync(
+            OutboundMessage message,
+            OutboundMiddlewareNext next,
+            CancellationToken cancellationToken)
+            => next(message with { Message = Message.Text($"[MW]{message.Message}") }, cancellationToken);
     }
 }

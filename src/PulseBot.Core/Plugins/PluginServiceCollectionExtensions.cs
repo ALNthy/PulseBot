@@ -52,4 +52,24 @@ public static class PluginServiceCollectionExtensions
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IPlugin, TPlugin>());
         return services;
     }
+
+    /// <summary>
+    /// 注册一个插件生命周期中间件。
+    /// </summary>
+    /// <remarks>
+    /// 中间件逐插件包裹加载与卸载两个阶段，按 <see cref="IPluginLifecycleMiddleware.Priority"/> 由外到内排序，
+    /// 可以前处理、后处理、跳过插件，也可以用 <c>try/catch</c> 包住续延做失败补偿。
+    /// 宿主与插件都可以注册自己的中间件。同一中间件重复注册会被自动去重。
+    /// </remarks>
+    /// <typeparam name="TMiddleware">中间件实现类型，由 DI 构造（构造函数注入可用）。</typeparam>
+    public static IServiceCollection AddPluginLifecycleMiddleware<TMiddleware>(this IServiceCollection services)
+        where TMiddleware : class, IPluginLifecycleMiddleware
+    {
+        ArgumentNullException.ThrowIfNull(services);
+
+        // 与 AddEventMiddleware 同样是 TryAddEnumerable：重复调用不会让中间件执行两次。
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IPluginLifecycleMiddleware, TMiddleware>());
+
+        return services;
+    }
 }

@@ -20,6 +20,15 @@ public enum SendFailureKind
 
     /// <summary>其他未归类失败（适配器已记录详细日志）。</summary>
     Unknown = 5,
+
+    /// <summary>
+    /// 被框架主动拦截，消息根本未发往平台（限流、黑白名单、敏感词等出站中间件所为）。
+    /// </summary>
+    /// <remarks>
+    /// 与 <see cref="Rejected"/> 的区别：那是平台侧明确拒绝（权限不足、被风控、目标不存在），
+    /// 这是框架侧在消息出网之前就拦下了。插件可据此决定是稍后重试还是改文案。
+    /// </remarks>
+    Blocked = 6,
 }
 
 /// <summary>
