@@ -8,9 +8,11 @@
 ## 特性
 
 - **事件驱动** — 所有事件实现 `IEvent`，由 `EventDispatcher` 按优先级分发给处理器，支持 `StopPropagation` 阻断传播。
+- **中间件管道** — 事件分发链的外层是洋葱式中间件（优先级大者在外层），可前处理、改写事件、后处理、短路；接入控制与会话拦截就装在这一层，不在处理器列表里参与排序。
 - **命令系统** — `[OnCommand("天气")]` 标注即注册，支持别名、无前缀命令、命令名冲突优先级、命令级权限节点。
 - **交互会话** — 插件可提问，用户的下一条消息自动路由回该插件，支持多轮、超时与取消，并带一个可跨命令读写的键值状态袋。粒度为 *(会话 + 用户)*：同一群里每人独立。
 - **权限与接入控制** — 用户/群黑白名单、超级管理员、`RequirePermission` 组合规则，接入控制位于事件管道最前端。
+- **定时任务** — 任务实现 `IScheduledTask`，用固定间隔或 Cron（5 段 / 含秒 6 段）声明触发方式；调度器串行执行并记录执行历史，带分布式锁，存储与锁都可替换为持久化实现。
 - **消息段抽象** — 文本、图片、@、回复引用、表情；基类是刻意不密封的 `abstract record`，适配器可自行派生平台专属段。
 - **热路径零反射** — 命令处理器在启动时扫描一次并通过 `CreateDelegate` 编译为强类型委托并缓存，分发路径上没有 `MethodInfo.Invoke`。
 - **全异步 + 构造函数注入** — 所有 I/O 返回 `Task`/`ValueTask` 并传播 `CancellationToken`，服务一律通过 DI 构造。
@@ -19,14 +21,14 @@
 
 | 项目 | 状态 |
 | --- | --- |
-| `PulseBot.Core` | ✅ 已实现 — 事件分发、命令、权限、插件、交互会话、消息段 |
+| `PulseBot.Core` | ✅ 已实现 — 事件分发、命令、权限、插件、交互会话、定时任务、消息段 |
 | `PulseBot.Cli` | ✅ 已实现 — 宿主入口、DI 装配、生命周期协调 |
 | `PulseBot.Adapter.Console` | ✅ 已实现 — 把标准输入输出当作聊天平台，用于本地联调与新适配器的参考实现 |
 | `PulseBot.Plugins.Echo` | ✅ 已实现 — 示例插件（单轮命令 + 多轮对话两种形态） |
 | `PulseBot.Adapter.OneBotV11` | 🚧 骨架 — 尚无代码 |
 | `PulseBot.Admin.*` | 🚧 骨架 — 尚无代码 |
 
-测试：130 个（Core 118 + Console 12），`dotnet test` 全绿。
+测试：163 个（Core 151 + Console 12），`dotnet test` 全绿。
 
 > 也就是说，**目前只有控制台这一个可用适配器** —— PulseBot 现在是个能在控制台里跑通完整链路的框架，还没有接入真实平台。
 
@@ -65,7 +67,7 @@ dotnet run --project src/PulseBot.Cli
 
 ```
 src/
-  PulseBot.Core/                 内核：事件、分发、命令、权限、插件、会话、消息段
+  PulseBot.Core/                 内核：事件、分发、命令、权限、插件、会话、调度、消息段
   PulseBot.Cli/                  宿主入口：DI 配置、加载适配器与插件
   PulseBot.Adapter.Console/      控制台适配器（参考实现）
   PulseBot.Adapter.OneBotV11/    OneBot v11 适配器（骨架）
@@ -111,6 +113,32 @@ builder.Services.AddPlugin<WeatherPlugin>();
 
 多轮对话（提问 → 用户回答 → 处理回答）见 [`EchoPlugin`](src/PulseBot.Plugins.Echo/EchoPlugin.cs) 的 `/注册` 与 `/我是谁`。
 
+## 写一个定时任务
+
+任务与插件相互独立：实现 `IScheduledTask`，依赖同样走构造函数注入，只是不与命令系统打交道。
+
+```csharp
+public sealed class DailyReportTask(ILogger<DailyReportTask> logger) : IScheduledTask
+{
+    // 固定间隔，或者 Cron（标准 5 段与含秒的 6 段都支持，时区可显式指定）。
+    public ScheduledTaskSchedule Schedule { get; } = ScheduledTaskSchedule.Cron("0 8 * * *");
+
+    public async ValueTask ExecuteAsync(CancellationToken cancellationToken)
+    {
+        logger.LogInformation("开始生成日报");
+        await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken);
+    }
+}
+```
+
+在宿主的 DI 里登记：
+
+```csharp
+builder.Services.AddScheduledTask<DailyReportTask>();
+```
+
+再配一个后台服务按 `SchedulingOptions.PollInterval` 驱动 `Scheduler` —— Core 不引用 Hosting 抽象、不自己起定时器，可直接照搬 [`SchedulerHostedService`](src/PulseBot.Cli/SchedulerHostedService.cs)。
+
 ## 常用命令
 
 ```bash
@@ -138,13 +166,12 @@ dotnet format PulseBot.slnx                    # 提交前格式化
 
 Core 的地基已完整，尚未实现的主要是：
 
-- **中间件管道** — 事件预处理/后处理、插件加载前后、消息发送前后（限流、审计、IP 级黑白名单都要挂在这里）。
+- **出站与插件加载中间件** — 事件侧已有洋葱式中间件管道；插件加载前后、消息发送前后两处中间件点尚未抽出。限流、审计与 IP 级黑白名单将挂在这里。
 - **通知类 / 请求类事件** — 目前只有 `MessageEvent`，群成员变动、戳一戳、加好友请求等尚无事件类型。
-- **定时任务调度器** — `IScheduledTask` + 调度器，支持持久化与分布式锁。
 - **插件依赖解析与热重载** — `[PluginMetadata]` 的 `Dependencies` 目前仅承载元数据。
 - **消息段补全** — 语音、视频、Markdown、按钮。
 - **适配器状态契约** — 供后台显示在线/掉线状态。
-- **持久化与多实例** — 会话、权限目前均为内存实现。
+- **持久化与多实例** — 会话、权限、调度执行历史与分布式锁目前均为内存实现（单机可用）。
 
 按依赖关系，接入真实平台的第一步是**补齐事件类型与消息段，然后实现 `Adapter.OneBotV11`**。
 

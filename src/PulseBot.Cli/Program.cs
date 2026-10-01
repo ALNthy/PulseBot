@@ -6,6 +6,7 @@ using PulseBot.Cli;
 using PulseBot.Core;
 using PulseBot.Core.Permissions;
 using PulseBot.Core.Plugins;
+using PulseBot.Core.Scheduling;
 using PulseBot.Core.Sessions;
 using PulseBot.Plugins.Echo;
 
@@ -32,9 +33,14 @@ builder.Services.Configure<ConsoleAdapterOptions>(
     builder.Configuration.GetSection(ConsoleAdapterOptions.SectionName));
 builder.Services.Configure<SessionOptions>(
     builder.Configuration.GetSection(SessionOptions.SectionName));
+builder.Services.Configure<SchedulingOptions>(
+    builder.Configuration.GetSection(SchedulingOptions.SectionName));
 
 // 插件：逐个显式登记，由 PluginManager 在启动时统一加载并扫描 [OnCommand]。
 builder.Services.AddPlugin<EchoPlugin>();
+
+// 定时任务：与插件一样逐个显式登记（任务不必是插件）。
+// builder.Services.AddScheduledTask<DailyReportTask>();
 
 // 适配器：控制台适配器把标准输入输出当作聊天平台，便于本地联调与插件开发；
 // 接入真实平台时在此登记（每个平台一个）：
@@ -46,6 +52,9 @@ builder.Services.AddHostedService<PulseBotLifecycleService>();
 
 // 交互会话的空闲回收：Core 不做后台任务，由宿主按配置间隔驱动。
 builder.Services.AddHostedService<SessionCleanupService>();
+
+// 定时任务调度：同样由宿主驱动。注册在最后 → 关闭时最先停止，不再拉起新一轮任务。
+builder.Services.AddHostedService<SchedulerHostedService>();
 
 IHost host = builder.Build();
 

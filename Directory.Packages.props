@@ -18,6 +18,15 @@
     <PackageVersion Include="Microsoft.Extensions.Logging.Console" Version="10.0.0" />
   </ItemGroup>
 
+  <ItemGroup Label="调度">
+    <!--
+      Cron 表达式解析。选它而不是自研解析器：步长、区间、列表、DST 与日/周字段的 OR 语义
+      边界极多，自研代码的出错概率远高于引入一个零依赖的纯托管库。
+      固定 0.11.1：0.x 语义下不写浮动范围，升级需人工验证。
+    -->
+    <PackageVersion Include="Cronos" Version="0.11.1" />
+  </ItemGroup>
+
   <ItemGroup Label="数据访问">
     <PackageVersion Include="Microsoft.EntityFrameworkCore" Version="10.0.0" />
     <PackageVersion Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.0" />

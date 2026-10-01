@@ -6,6 +6,7 @@ using PulseBot.Core.Adapters;
 using PulseBot.Core.Dispatching;
 using PulseBot.Core.Events;
 using PulseBot.Core.Messages;
+using PulseBot.Core.Scheduling;
 
 namespace PulseBot.Core.Tests;
 
@@ -37,6 +38,21 @@ public sealed class ServiceCollectionExtensionsTests
         Assert.Single(provider.GetRequiredService<IEnumerable<IAdapter>>());
         Assert.NotNull(provider.GetRequiredService<IEventPublisher>());
         Assert.NotNull(provider.GetRequiredService<IMessageSender>());
+    }
+
+    /// <summary>
+    /// 回归测试：惯例的一键装配 <c>AddPulseBot()</c> 里已包含定时任务域。
+    /// </summary>
+    /// <remarks>
+    /// 这里一个定时任务都没登记，容器必须给出空任务清单而不是抛异常——
+    /// 不跑定时任务的宿主也能直接使用 <c>AddPulseBot()</c>。
+    /// </remarks>
+    [Fact]
+    public void 内核装配后能解析定时任务调度器()
+    {
+        using ServiceProvider provider = BuildProvider();
+
+        Assert.NotNull(provider.GetRequiredService<Scheduler>());
     }
 
     /// <summary>
