@@ -15,6 +15,7 @@
     <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.0" />
     <PackageVersion Include="Microsoft.Extensions.Options" Version="10.0.0" />
     <PackageVersion Include="Microsoft.Extensions.Hosting" Version="10.0.0" />
+    <PackageVersion Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.0" />
     <PackageVersion Include="Microsoft.Extensions.Logging.Console" Version="10.0.0" />
   </ItemGroup>
 
@@ -30,6 +31,20 @@
   <ItemGroup Label="数据访问">
     <PackageVersion Include="Microsoft.EntityFrameworkCore" Version="10.0.0" />
     <PackageVersion Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.0" />
+  </ItemGroup>
+
+  <ItemGroup Label="后台管理">
+    <!--
+      JWT 签发与校验。版本号跟随 ASP.NET Core 共享框架（10.0.0），
+      不要与 Microsoft.Extensions.* 的版本混用不同大版本。
+    -->
+    <PackageVersion Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.0" />
+    <!--
+      JWT 的签发与校验原语（JsonWebTokenHandler、TokenValidationParameters 等）。
+      JwtBearer 只是把它作为传递依赖带进 Api 项目，而后台基础设施要在编译期直接使用，
+      因此显式声明。版本与 JwtBearer 10.0.0 所传递的版本严格一致，避免版本提升。
+    -->
+    <PackageVersion Include="Microsoft.IdentityModel.JsonWebTokens" Version="8.0.1" />
   </ItemGroup>
 
   <ItemGroup Label="测试">

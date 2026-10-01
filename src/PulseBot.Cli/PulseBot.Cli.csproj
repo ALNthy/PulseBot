@@ -9,14 +9,25 @@
   <ItemGroup>
     <ProjectReference Include="..\PulseBot.Core\PulseBot.Core.csproj" />
     <ProjectReference Include="..\PulseBot.Adapter.Console\PulseBot.Adapter.Console.csproj" />
-    <ProjectReference Include="..\PulseBot.Adapter.OneBotV11\PulseBot.Adapter.OneBotV11.csproj" />
+    <ProjectReference Include="..\PulseBot.Adapter.OneBot\PulseBot.Adapter.OneBot.csproj" />
     <ProjectReference Include="..\PulseBot.Plugins.Echo\PulseBot.Plugins.Echo.csproj" />
+    <ProjectReference Include="..\PulseBot.Admin.Api\PulseBot.Admin.Api.csproj" />
   </ItemGroup>
 
+  <!--
+    后台 HTTP 服务：宿主进程内承载 ASP.NET Core 管道。
+    后台与机器人必须共用同一个 DI 容器，才能读到运行中的适配器、插件与调度器状态——
+    独立进程里 AddPulseBot() 得到的是一个空内核，看不到任何真实运行数据。
+  -->
   <ItemGroup>
-    <PackageReference Include="Microsoft.Extensions.Hosting" />
-    <PackageReference Include="Microsoft.Extensions.Logging.Console" />
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
   </ItemGroup>
+
+  <!--
+    不再单独引用 Microsoft.Extensions.Hosting / Logging.Console：
+    ASP.NET Core 共享框架（下面的 FrameworkReference）已包含全部 Microsoft.Extensions.* 组件，
+    重复引用会被 NuGet 标记为多余（NU1510）。
+  -->
 
   <!--
     配置文件随生成输出复制：普通 SDK 工程不像 Web SDK 那样自动复制 appsettings.json，

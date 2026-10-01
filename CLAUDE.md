@@ -86,7 +86,7 @@ PulseBot 是一个 C# 版、事件驱动的聊天机器人框架。基于 **.NET
 - `src/PulseBot.Plugins.*/` — 可独立分发的插件项目
 - `src/PulseBot.Admin.Shared/` — 后台共享 DTO、枚举
 - `src/PulseBot.Admin.Infrastructure/` — EF Core 10、仓储、HybridCache
-- `src/PulseBot.Admin.Api/` — 后台 REST API + SignalR Hub
+- `src/PulseBot.Admin.Api/` — 后台 REST API（类库，由 `PulseBot.Cli` 同进程挂载）
 - `src/PulseBot.Admin.Web/` — Vue3 + TypeScript 前端（独立构建）
 - `tests/` — 对应测试项目
 
@@ -95,8 +95,7 @@ PulseBot 是一个 C# 版、事件驱动的聊天机器人框架。基于 **.NET
 dotnet build                     # 必须通过才算完成
 dotnet test                      # 全量测试
 dotnet test --filter "Category=Unit"  # 快速单元测试
-dotnet run --project src/PulseBot.Cli
-dotnet run --project src/PulseBot.Admin.Api
+dotnet run --project src/PulseBot.Cli   # 宿主；后台管理随它一同启动
 docker compose -f docker/docker-compose.yml up -d
 cd src/PulseBot.Admin.Web && npm run dev
 dotnet format                    # 提交前格式化
@@ -160,7 +159,7 @@ dotnet format                    # 提交前格式化
 - 任务实现 `IScheduledTask`，由调度器统一管理，可在后台查看执行历史。
 
 ## 后台管理
-- `PulseBot.Admin.Api` 独立进程，通过 `IManagementService` 调用核心。
+- `PulseBot.Admin.Api` 由 `PulseBot.Cli` 同进程挂载（两者共用同一个 DI 容器），通过 `IManagementService` 调用核心。
 - 实时推送使用 SignalR，前端通过 WebSocket 接收日志、事件、状态。
 - 轻量级实时流可使用 `TypedResults.ServerSentEvents`。
 - 配置修改写入数据库，通过 Redis Pub/Sub 通知核心热重载。

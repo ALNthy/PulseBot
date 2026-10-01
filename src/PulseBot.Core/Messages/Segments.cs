@@ -49,3 +49,51 @@ public sealed record FaceSegment(string FaceId) : MessageSegment
     /// <inheritdoc />
     public override string ToPlainText() => "[表情]";
 }
+
+/// <summary>
+/// @ 全体成员段。与 <see cref="AtSegment"/> 分开：它的目标不是某个具体用户，
+/// 而是整个会话的全体成员，用一个虚构的用户 id 表达会污染 id 空间。
+/// </summary>
+public sealed record MentionAllSegment : MessageSegment
+{
+    /// <inheritdoc />
+    public override string ToPlainText() => "@全体成员";
+}
+
+/// <summary>
+/// 音频段：语音消息与音频文件共用同一种段——两者对 Core 与插件都是「一段可播放的音频」，
+/// 区分只对平台有意义（如 OneBot 12 的 voice 与 audio），由适配器在映射时决定归入哪个段。
+/// </summary>
+/// <param name="Source">音频来源标识，解释权归适配器（约定同 <see cref="ImageSegment.Source"/>）。</param>
+public sealed record AudioSegment(string Source) : MessageSegment
+{
+    /// <inheritdoc />
+    public override string ToPlainText() => "[语音]";
+}
+
+/// <summary>视频段。</summary>
+/// <param name="Source">视频来源标识，解释权归适配器。</param>
+public sealed record VideoSegment(string Source) : MessageSegment
+{
+    /// <inheritdoc />
+    public override string ToPlainText() => "[视频]";
+}
+
+/// <summary>文件段。</summary>
+/// <param name="Source">文件来源标识，解释权归适配器。</param>
+/// <param name="FileName">展示用文件名，可为 null（平台未提供时）。</param>
+public sealed record FileSegment(string Source, string? FileName = null) : MessageSegment
+{
+    /// <inheritdoc />
+    public override string ToPlainText() => string.IsNullOrEmpty(FileName) ? "[文件]" : $"[文件:{FileName}]";
+}
+
+/// <summary>位置段。</summary>
+/// <param name="Latitude">纬度。</param>
+/// <param name="Longitude">经度。</param>
+/// <param name="Title">地点名称，可为 null。</param>
+public sealed record LocationSegment(double Latitude, double Longitude, string? Title = null) : MessageSegment
+{
+    /// <inheritdoc />
+    public override string ToPlainText() => string.IsNullOrEmpty(Title) ? "[位置]" : $"[位置:{Title}]";
+}

@@ -25,17 +25,17 @@
 | `PulseBot.Cli` | ✅ 已实现 — 宿主入口、DI 装配、生命周期协调 |
 | `PulseBot.Adapter.Console` | ✅ 已实现 — 把标准输入输出当作聊天平台，用于本地联调与新适配器的参考实现 |
 | `PulseBot.Plugins.Echo` | ✅ 已实现 — 示例插件（单轮命令 + 多轮对话两种形态） |
-| `PulseBot.Adapter.OneBotV11` | 🚧 骨架 — 尚无代码 |
-| `PulseBot.Admin.*` | 🚧 骨架 — 尚无代码 |
+| `PulseBot.Adapter.OneBot` | ✅ 已实现 — OneBot 12 反向 WebSocket（消息、通知、请求事件） |
+| `PulseBot.Admin.*` | ✅ 第一期 — 同进程只读监控（JWT 认证、状态查询、审计落库）；实时推送、写操作与前端待做 |
 
-测试：186 个（Core 174 + Console 12），`dotnet test` 全绿。
+测试：257 个（Core 176 + Console 12 + OneBot 29 + Admin 40），`dotnet test` 全绿。
 
 > 也就是说，**目前只有控制台这一个可用适配器** —— PulseBot 现在是个能在控制台里跑通完整链路的框架，还没有接入真实平台。
 
 ## 环境要求
 
 - [.NET 10 SDK](https://dotnet.microsoft.com/download)（目标框架 `net10.0`，语言版本 C# 14）
-- Node.js 仅在开发后台前端时需要（`PulseBot.Admin.Web` 目前是骨架）
+- Node.js 仅在开发后台前端时需要（`PulseBot.Admin.Web` 尚未创建）
 
 ```bash
 dotnet --version   # 应输出 10.x
@@ -72,12 +72,66 @@ dotnet run --project src/PulseBot.Cli
 | `:switch private` / `:switch group <群号>` | 切换当前会话（用于验证「同一群里每人独立」） |
 | `exit` | 结束输入（机器人继续运行，Ctrl+C 退出宿主） |
 
+## 事件驱动原理
+
+一条消息从进入框架到机器人回话，全程只有「一次查表 + 若干次委托调用」，没有任何反射。下图是完整闭环——**中间件管道与处理器列表是所有插件共用的一条链**：
+
+```mermaid
+flowchart TD
+    Platform(["聊天平台<br/>QQ / Telegram / 控制台"])
+
+    subgraph Core["PulseBot.Core"]
+        direction TB
+        Adapter["IAdapter<br/>原始报文 → MessageEvent"]
+        Publisher["IEventPublisher<br/>装配 ReplyChannel"]
+        Dispatcher["EventDispatcher<br/>按运行时类型取处理器表"]
+
+        subgraph Pipe["事件中间件管道（洋葱式 · 优先级大者在外层）"]
+            direction TB
+            AC["① AccessControlMiddleware<br/>黑白名单 · int.MaxValue"]
+            SP["② SessionPromptMiddleware<br/>等待中的回答 · int.MaxValue - 1"]
+            CM["③ CommandMiddleware<br/>命令匹配 · int.MaxValue - 2"]
+            Custom["宿主 / 插件注册的中间件<br/>Priority 默认 0"]
+            Handlers["IEventHandler&lt;TEvent&gt; 列表<br/>按 Priority 降序 · 可 StopPropagation"]
+            AC --> SP --> CM --> Custom --> Handlers
+        end
+
+        Cmd["CommandDispatcher<br/>调用插件的 [OnCommand] 方法"]
+        Callback["插件登记的回答回调<br/>SessionReplyHandler"]
+        Sender["AdapterMessageSender<br/>按 ConversationId.Platform 路由"]
+        OutMid["出站中间件管道<br/>IOutboundMiddleware"]
+    end
+
+    Platform -->|"适配器收到报文"| Adapter
+    Adapter --> Publisher --> Dispatcher --> AC
+    AC -.->|"黑白名单命中"| Blocked(["消息到此为止"])
+    SP -.->|"取走等待态"| Callback
+    CM -.->|"命中命令"| Cmd
+    Handlers --> Sender
+    Cmd --> Sender
+    Callback --> Sender
+    Sender --> OutMid
+    OutMid -->|"IAdapter.SendAsync"| Platform
+```
+
+**① 三档内建中间件的顺序由优先级数值保证，与注册顺序无关。** 接入控制在最外层，被拉黑的人根本没有机会进入后续任何环节；会话拦截居中，等待回答期间用户说的话优先当作「回答」而不是命令——否则在无前缀命令默认开启时，「复读 你好」这种恰好以命令名开头的回答会被命令分发夺走，插件永远收不到答案且没有任何报错；命令分发最靠内，排在宿主与插件注册的普通中间件之外。
+
+**② 短路有两种形式，效果都是「后面的都不执行」。** 中间件不调用续延 → 整条链（含处理器列表）终止；处理器调用 `EventContext.StopPropagation()` → 只阻断同批次后续处理器。内建三档用的都是前者：接入控制拦截、会话拦截截获回答、命令分发命中命令，都不会再往下走。
+
+**③ 出站是一条独立的管道，与入站共享同一个「平台」端点。** 插件回复时消息并不原路返回，而是走 `AdapterMessageSender`——它按 `ConversationId.Platform` 查适配器路由表，中途经过出站中间件管道，可以改写消息或阻断发送。
+
+**④ 适配器与发送器之间的构造期循环依赖，靠「延迟解析」断开。** 适配器需要 `IEventPublisher` 发布事件，而 `AdapterMessageSender` 需要全部适配器来建立路由表；若在构造期互相解析，容器会直接拒绝解析。所以 `EventPublisher` 接收的是 `Func<IMessageSender>` 工厂，推迟到「首次发布事件」时才解析——那时容器已构建完毕，适配器实例也已在位。
+
+**⑤ 没装中间件时走零分配快路径。** 管道在构造期一次性绑定为委托链，运行期不再碰容器；既没装中间件又没有匹配处理器时，分发以 `ValueTask.CompletedTask` 直接返回。
+
+完整实现见 [Dispatching/](src/PulseBot.Core/Dispatching/)、[Permissions/AccessControlMiddleware.cs](src/PulseBot.Core/Permissions/AccessControlMiddleware.cs)、[Sessions/SessionPromptMiddleware.cs](src/PulseBot.Core/Sessions/SessionPromptMiddleware.cs)。
+
 ## 搭一个宿主
 
 框架的全部能力都由 DI 容器拼装，宿主入口只负责「登记」。以下是 Cli 的完整装配（见 [`Program.cs`](src/PulseBot.Cli/Program.cs)），搭自己的宿主时逐段照抄即可：
 
 ```csharp
-HostApplicationBuilder builder = Host.CreateApplicationBuilder(new HostApplicationBuilderSettings
+WebApplicationBuilder builder = WebApplication.CreateBuilder(new WebApplicationOptions
 {
     Args = args,
     ContentRootPath = AppContext.BaseDirectory,
@@ -90,6 +144,7 @@ builder.Services.AddPulseBot();
 builder.Services.Configure<PermissionOptions>(builder.Configuration.GetSection(PermissionOptions.SectionName));
 builder.Services.Configure<SessionOptions>(builder.Configuration.GetSection(SessionOptions.SectionName));
 builder.Services.Configure<SchedulingOptions>(builder.Configuration.GetSection(SchedulingOptions.SectionName));
+builder.Services.Configure<AdminOptions>(builder.Configuration.GetSection(AdminOptions.SectionName));
 
 // 插件与定时任务：逐个显式登记，由 PluginManager / Scheduler 在启动时统一处理
 builder.Services.AddPlugin<EchoPlugin>();
@@ -101,20 +156,128 @@ builder.Services.AddSingleton<IAdapter, OneBotAdapter>();
 // 中间件：三处挂载点按需登记（这里以出站为例）
 builder.Services.AddOutboundMiddleware<PrefixMiddleware>();
 
+// 后台管理：数据访问、认证、审计，以及 HTTP 端点的实现
+builder.Services.AddAdminInfrastructure();
+builder.Services.AddAdminApi();
+
 // 宿主服务：把插件与适配器的启停、会话回收、任务调度挂到宿主生命周期上。
 // 调度服务注册在最后 → 关闭时最先停止，不再拉起新一轮任务。
 builder.Services.AddHostedService<PulseBotLifecycleService>();
 builder.Services.AddHostedService<SessionCleanupService>();
 builder.Services.AddHostedService<SchedulerHostedService>();
 
-await builder.Build().RunAsync();
+WebApplication app = builder.Build();
+app.MapAdminApi();   // Admin:Enabled 为 false 时不挂载任何端点
+await app.RunAsync();
 ```
 
-三点值得说明：
+四点值得说明：
 
 - **`ContentRootPath = AppContext.BaseDirectory`** —— 默认取当前工作目录，从仓库根执行 `dotnet run` 时就会去仓库根找 `appsettings.json`（不存在），配置被静默忽略。以可执行文件所在目录为准，配置文件才能稳定随程序一起被找到。
+- **用 `WebApplication` 而不是 `Host`** —— 后台管理要在宿主进程内承载 HTTP 管道，并且**必须与机器人共用同一个 DI 容器**：独立进程里 `AddPulseBot()` 得到的是一个空内核，看不到任何运行中的适配器与插件。只跑机器人、不需要后台时，用 `Host.CreateApplicationBuilder` 即可。
 - **Core 不含后台服务** —— `PulseBot.Core` 不引用 Hosting 抽象，会话清理与任务调度都只提供「一轮即返回」的逻辑入口（`ISessionStore.CleanupExpiredAsync`、`Scheduler.RunDueTasksAsync`），由宿主的 `BackgroundService` 决定何时调用。可直接照搬 [`SessionCleanupService`](src/PulseBot.Cli/SessionCleanupService.cs) 与 [`SchedulerHostedService`](src/PulseBot.Cli/SchedulerHostedService.cs)。
 - **插件与适配器都是显式登记** —— 项目引用 + DI 登记，不做运行时 DLL 扫描：引用关系由编译器校验，部署时也不会有「插件目录里少了一个 dll」这类运行期故障。
+
+## 接入 OneBot 12
+
+`PulseBot.Adapter.OneBot` 实现了 [OneBot 12](https://12.onebot.dev/) 的**反向 WebSocket**：由 PulseBot 监听端口，OneBot 实现端（NapCat、Lagrange 等）主动连入。同一条连接双向通行——实现端推事件，PulseBot 发动作请求。
+
+### 1. 启动 PulseBot
+
+```bash
+dotnet run --project src/PulseBot.Cli
+```
+
+默认监听 `http://localhost:6700/onebot/v12/`，启动日志里会打印实际地址。
+
+### 2. 配置实现端
+
+在实现端添加一个**反向 WebSocket 客户端**：
+
+| 项 | 值 |
+| --- | --- |
+| 地址 | `ws://localhost:6700/onebot/v12/` |
+| 访问令牌 | 与 `Adapters:OneBot12:AccessToken` 一致；PulseBot 侧留空则实现端也不必填 |
+
+实现端发送的 `Sec-WebSocket-Protocol: 12.<实现名>` 会在握手时被原样回显。
+
+### 3. 验证
+
+连上后日志出现「OneBot 实现端已连接」，在群里或私聊里发一条 `/echo 你好`，收到复读即接通。
+
+### 行为说明
+
+- **同时只保留一条连接**：新连接到来会顶替旧连接，实现端重启后直接重连即可。
+- **元事件不进事件管道**：`connect` 只记一条日志，`heartbeat` 只更新活跃状态——它们描述的是连接本身，不是会话内容。
+- **被动回复走 `reply` 消息段**：OneBot 12 的回复是消息段而非独立参数，适配器会自动插到消息最前面。
+- **频道会话的 id 形如 `guild_id:channel_id`**：`ConversationId` 只有一个 id 槽位，而频道消息收发都要两个标识。
+- **没有展示名**：OneBot 12 的消息事件不带 `sender` 对象，`MessageEvent.SenderDisplayName` 为空，需要展示名得另行查询。
+- **平台不支持的消息段会降级**：`FaceSegment` 等 OneBot 12 没有的段类型，出站时退化为纯文本，而不是发送失败。
+
+跨机部署时把 `Host` 改成 `+` 或具体 IP；Windows 上监听 `localhost` 以外的前缀需要注册 URL ACL（`netsh http add urlacl url=http://+:6700/onebot/v12/ user=Everyone`）或以管理员身份运行。
+
+## 后台管理
+
+后台与机器人**同进程**运行：宿主在提供机器人的同时挂载一组只读 HTTP 接口，两者共用同一个 DI 容器——因此后台看到的是真实运行中的适配器、插件与调度器状态。
+
+第一期的范围是**只读监控闭环**：JWT 认证 + 状态查询 + 审计落库。实时推送（SignalR）、写操作（改配置、启停插件）与 Vue 前端尚未实现。
+
+### 启用
+
+后台由 `Admin` 配置节控制，[`appsettings.json`](src/PulseBot.Cli/appsettings.json) 里的默认值可以直接跑起来。设为 `Enabled: false` 则完全不挂载：不开端口、不建数据库文件，宿主退化成纯机器人进程。
+
+`Auth:SigningKey` 是 JWT 的 HMAC-SHA256 密钥，**必须**替换掉示例值，且不少于 32 字节——配置非法时宿主在**启动期**就失败，而不是退化成一个没有认证的后台：
+
+```bash
+openssl rand -base64 48
+```
+
+用环境变量注入，不要提交进版本库：
+
+```bash
+export Admin__Auth__SigningKey="<生成的随机串>"
+```
+
+数据库用 SQLite，首次启动自动建表。引导账号只在**账号表为空**时创建，因此第一次登录后应立即把 `BootstrapPassword` 从配置里删掉。
+
+### 登录
+
+```bash
+curl -X POST http://localhost:5187/admin/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"userName":"admin","password":"<BootstrapPassword>"}'
+```
+
+返回 `accessToken`（默认 30 分钟）与 `refreshToken`（默认 7 天）。刷新会**轮换**刷新令牌——旧的立即作废，重放会被拒绝。
+
+### 接口一览
+
+| 方法 | 路径 | 认证 | 说明 |
+| --- | --- | --- | --- |
+| `GET` | `/health` | 无 | 存活探针 |
+| `POST` | `/admin/api/auth/login` | 无 | 换取令牌对 |
+| `POST` | `/admin/api/auth/refresh` | 无 | 用刷新令牌换取新令牌对（轮换） |
+| `POST` | `/admin/api/auth/logout` | 无 | 撤销刷新令牌，恒返回 204（幂等） |
+| `GET` | `/admin/api/status` | 需要 | 运行状态：启动时刻、运行时长、各子域计数 |
+| `GET` | `/admin/api/adapters` | 需要 | 已注册的适配器 |
+| `GET` | `/admin/api/plugins` | 需要 | 已加载的插件及其元数据与命令 |
+| `GET` | `/admin/api/commands` | 需要 | 全部命令名（含别名）与所属插件 |
+| `GET` | `/admin/api/scheduled-tasks` | 需要 | 定时任务清单与下次触发时刻 |
+| `GET` | `/admin/api/scheduled-tasks/executions` | 需要 | 最近执行记录，`?maxCount=` 控制条数 |
+| `GET` | `/admin/api/audit-logs` | 需要 | 最近审计记录，`?maxCount=` 控制条数 |
+
+认证端点之外的全部接口都要求 `admin` 角色：
+
+```bash
+curl http://localhost:5187/admin/api/status -H "Authorization: Bearer <accessToken>"
+```
+
+### 安全说明
+
+- **访问令牌是自包含 JWT，签发后无法撤销**——登出只撤销刷新令牌。这是无状态令牌的固有取舍，较短的有效期（默认 30 分钟）即为对冲。
+- **密码以 PBKDF2-HMAC-SHA256（21 万次迭代）存储**；刷新令牌只存 SHA-256 哈希，明文仅出现在签发响应里。
+- **登录失败不区分「账号不存在」「已停用」「密码错误」**：对外统一失败，真实原因进审计与日志；账号不存在时同样走一次等价的哈希计算，避免按响应时间枚举有效用户名。
+- 对外提供服务时把 `Url` 改为 `http://0.0.0.0:5187`，并置于反向代理与 TLS 之后。
 
 ## 配置项一览
 
@@ -164,6 +327,30 @@ await builder.Build().RunAsync();
 | `Prompt` | `"你> "` | 输入提示符 |
 | `BotPrefix` | `"机器人> "` | 机器人输出前缀 |
 
+**`Adapters:OneBot12`** —— OneBot 12 适配器：
+
+| 键 | 默认值 | 说明 |
+| --- | --- | --- |
+| `Host` | `"localhost"` | 监听主机名。只监听回环地址不需要额外授权；跨机部署改为 `+` 或具体 IP |
+| `Port` | `6700` | 监听端口，须与实现端配置的反向连接地址一致 |
+| `Path` | `"/onebot/v12/"` | 反向 WebSocket 路径 |
+| `AccessToken` | 空 | 访问令牌；非空时要求实现端在握手时携带 `Authorization: Bearer <token>`，不匹配直接拒绝连接 |
+| `ActionTimeout` | `"00:00:10"` | 等待实现端返回动作响应的超时，超过即视为本次发送失败 |
+
+**`Admin`** —— 后台管理（与机器人同进程）：
+
+| 键 | 默认值 | 说明 |
+| --- | --- | --- |
+| `Enabled` | `true` | 是否挂载后台；`false` 则不开端口、不建数据库文件 |
+| `Url` | `"http://localhost:5187"` | 监听地址 |
+| `DatabasePath` | `"pulsebot-admin.db"` | SQLite 文件；相对路径以可执行文件所在目录为基准 |
+| `Auth:SigningKey` | 空 | JWT 签名密钥，**启用后台时必填**且不少于 32 字节 |
+| `Auth:Issuer` / `Auth:Audience` | `"pulsebot-admin"` | 令牌的 `iss` / `aud` 声明 |
+| `Auth:AccessTokenLifetime` | `"00:30:00"` | 访问令牌有效期 |
+| `Auth:RefreshTokenLifetime` | `"7.00:00:00"` | 刷新令牌有效期 |
+| `Auth:BootstrapUser` | `"admin"` | 引导账号用户名；仅在账号表为空时创建 |
+| `Auth:BootstrapPassword` | 空 | 引导账号初始密码；为空则不创建账号（宿主记警告） |
+
 ## 项目结构
 
 ```
@@ -171,14 +358,16 @@ src/
   PulseBot.Core/                 内核：事件、分发、命令、权限、插件、会话、调度、消息段
   PulseBot.Cli/                  宿主入口：DI 配置、加载适配器与插件
   PulseBot.Adapter.Console/      控制台适配器（参考实现）
-  PulseBot.Adapter.OneBotV11/    OneBot v11 适配器（骨架）
+  PulseBot.Adapter.OneBot/       OneBot 适配器，当前实现了 12 版（反向 WebSocket）
   PulseBot.Plugins.Echo/         示例插件
-  PulseBot.Admin.Shared/         后台共享契约（骨架）
-  PulseBot.Admin.Infrastructure/ 后台数据访问（骨架）
-  PulseBot.Admin.Api/            后台 REST API + SignalR（骨架）
+  PulseBot.Admin.Shared/         后台共享契约：配置、DTO、枚举（零依赖）
+  PulseBot.Admin.Infrastructure/ 后台基础设施：EF Core、认证与令牌、审计、监控数据聚合
+  PulseBot.Admin.Api/            后台 HTTP 层：端点映射与 JWT 认证（类库，由 Cli 挂载）
 tests/
   PulseBot.Core.Tests/
   PulseBot.Adapter.Console.Tests/
+  PulseBot.Adapter.OneBot.Tests/
+  PulseBot.Admin.Tests/
 ```
 
 ## 写一个插件
@@ -434,13 +623,15 @@ dotnet format PulseBot.slnx                    # 提交前格式化
 Core 的地基已完整，尚未实现的主要是：
 
 - **限流、审计与 IP 级黑白名单** — 三处中间件管道（事件、出站、插件生命周期）已经就位，但这些具体策略尚未实现；事件侧目前只内建了接入控制与会话拦截。
-- **通知类 / 请求类事件** — 目前只有 `MessageEvent`，群成员变动、戳一戳、加好友请求等尚无事件类型。
+- **通知类 / 请求类事件的覆盖面** — `NoticeEvent` / `RequestEvent` 已就位，但只翻译了 OneBot 12 的标准类型，平台特有类型统一归入 `NoticeKind.Other`（原始类型见 `RawType`）。
 - **插件依赖解析与热重载** — `[PluginMetadata]` 的 `Dependencies` 目前仅承载元数据。
-- **消息段补全** — 语音、视频、Markdown、按钮。
-- **适配器状态契约** — 供后台显示在线/掉线状态。
+- **消息段补全** — Markdown、按钮、云文档等段类型尚未定义。
+- **适配器状态契约** — 供后台显示在线/掉线状态；适配器目前不向外暴露连接状态。
 - **持久化与多实例** — 会话、权限、调度执行历史与分布式锁目前均为内存实现（单机可用）。
+- **后台管理的后续** — 第一期的只读监控闭环已完成；实时推送（SignalR）、写操作（改配置、启停插件）与 Vue 前端待做。
 
-按依赖关系，接入真实平台的第一步是**补齐事件类型与消息段，然后实现 `Adapter.OneBotV11`**。
+接入真实平台的第一步——补齐事件类型、消息段，并实现 `Adapter.OneBot`（OneBot 12 反向 WebSocket）——已经完成；
+后台管理的第一期（只读监控闭环）也已完成。后续按上面的顺序推进。
 
 ## 许可证
 

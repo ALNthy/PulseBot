@@ -132,4 +132,31 @@ public sealed class MessageTests
         Assert.NotEqual(group, privateChat);
         Assert.NotEqual(group, otherPlatform);
     }
+
+    /// <summary>
+    /// 新增段类型的纯文本渲染：平台不支持时靠它回退，因此每种段都必须有可读的占位文本。
+    /// </summary>
+    [Fact]
+    public void 新增段类型渲染为可读的纯文本()
+    {
+        var message = new Message(
+            new MentionAllSegment(),
+            new AudioSegment("file:///a.silk"),
+            new VideoSegment("file:///c.mp4"),
+            new FileSegment("file:///d.zip", "报告.zip"),
+            new LocationSegment(31.2, 121.5, "上海"));
+
+        Assert.Equal("@全体成员[语音][视频][文件:报告.zip][位置:上海]", message.ToString());
+    }
+
+    /// <summary>可选信息缺失（文件名、地点名）时退化为更短的占位符。</summary>
+    [Fact]
+    public void 缺少可选信息的段渲染为短占位符()
+    {
+        var message = new Message(
+            new FileSegment("file:///d.zip"),
+            new LocationSegment(31.2, 121.5));
+
+        Assert.Equal("[文件][位置]", message.ToString());
+    }
 }
