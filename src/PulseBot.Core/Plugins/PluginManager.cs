@@ -18,7 +18,8 @@ namespace PulseBot.Core.Plugins;
 /// await pluginManager.UnloadAllAsync(CancellationToken.None); // 优雅关闭
 /// </code>
 /// <para>
-/// 命令表条目与宿主生命周期一致，本步骤不随单个插件卸载移除。
+/// 命令表条目与宿主生命周期一致：插件的启停（<see cref="SetPluginEnabled"/>）不增删条目，
+/// 只切换「是否可触发」，因此命令表在启动完成后始终是只读的。
 /// </para>
 /// </remarks>
 public sealed class PluginManager
@@ -31,6 +32,9 @@ public sealed class PluginManager
 
     /// <summary>命令分发器（装配期需要注册能力，因此依赖具体类型而非只读接口）。</summary>
     private readonly CommandDispatcher _commandDispatcher;
+
+    /// <summary>插件启用状态：由后台管理驱动，命令分发据此门控。</summary>
+    private readonly PluginStateRegistry _state;
 
     private readonly ILogger<PluginManager> _logger;
 
@@ -50,17 +54,20 @@ public sealed class PluginManager
         IEnumerable<IPlugin> plugins,
         IEnumerable<IPluginLifecycleMiddleware> middlewares,
         CommandDispatcher commandDispatcher,
+        PluginStateRegistry state,
         ILogger<PluginManager> logger)
     {
         ArgumentNullException.ThrowIfNull(plugins);
         ArgumentNullException.ThrowIfNull(middlewares);
         ArgumentNullException.ThrowIfNull(commandDispatcher);
+        ArgumentNullException.ThrowIfNull(state);
         ArgumentNullException.ThrowIfNull(logger);
 
         // 物化一次，避免每次枚举时重新解析容器。
         _plugins = plugins as IReadOnlyList<IPlugin> ?? plugins.ToArray();
         _middlewares = middlewares.OrderByDescending(static middleware => middleware.Priority).ToArray();
         _commandDispatcher = commandDispatcher;
+        _state = state;
         _logger = logger;
 
         _loadPipeline = BuildPipeline(PluginLifecyclePhase.Load);
@@ -69,6 +76,83 @@ public sealed class PluginManager
 
     /// <summary>已成功加载的插件列表（只读，用于诊断）。</summary>
     public IReadOnlyList<IPlugin> LoadedPlugins => _loadedPlugins;
+
+    /// <summary>容器中登记的全部插件（含被停用的），供后台列举与按类型名查找。</summary>
+    public IReadOnlyList<IPlugin> Plugins => _plugins;
+
+    /// <summary>判断插件当前是否启用（未登记过的类型名视为启用）。</summary>
+    /// <param name="pluginTypeName">插件类型全名。</param>
+    public bool IsEnabled(string pluginTypeName) => !_state.IsDisabled(pluginTypeName);
+
+    /// <summary>容器中是否登记了该类型名的插件（不论当前启用与否）。</summary>
+    /// <param name="pluginTypeName">插件类型全名。</param>
+    /// <remarks>
+    /// 供调用方在改变状态之前先确认目标存在——把「目标不存在」与「写入失败」分开，
+    /// 前者是明确的业务拒绝，后者是故障，两者不该混在同一个返回值里。
+    /// </remarks>
+    public bool ContainsPlugin(string pluginTypeName)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(pluginTypeName);
+
+        return FindPlugin(pluginTypeName) is not null;
+    }
+
+    /// <summary>
+    /// 启用或停用一个插件：停用后它注册的命令立即不再可触发，启用后立即恢复。
+    /// </summary>
+    /// <param name="pluginTypeName">插件类型全名（与 <c>PluginInfo.TypeName</c> 同口径）。</param>
+    /// <param name="enabled"><c>true</c> 为启用，<c>false</c> 为停用。</param>
+    /// <returns>容器中存在该插件时返回 <c>true</c>；类型名对不上任何已登记插件时返回 <c>false</c>。</returns>
+    /// <remarks>
+    /// <para>
+    /// 只切换命令门控，<b>不改动生命周期</b>：插件实例、它占用的资源与它注册的事件处理器都不受影响
+    /// （<see cref="IPlugin.OnUnloadAsync"/> 不会被调用）。这是刻意的——Core 既无法保证插件能被安全地
+    /// 热卸载，也不掌握「插件与事件处理器」的归属关系，因此不给出做不到的承诺。
+    /// </para>
+    /// <para>
+    /// 重复设置同一状态不算失败：返回值只表示「插件是否存在」，是否真的发生了变化由内部状态决定。
+    /// </para>
+    /// </remarks>
+    public bool SetPluginEnabled(string pluginTypeName, bool enabled)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(pluginTypeName);
+
+        IPlugin? plugin = FindPlugin(pluginTypeName);
+        if (plugin is null)
+        {
+            return false;
+        }
+
+        if (!_state.SetEnabled(pluginTypeName, enabled))
+        {
+            // 状态本就如此：幂等操作，不产生日志噪音。
+            return true;
+        }
+
+        var (displayName, _) = Describe(plugin);
+        _logger.LogInformation(
+            "插件 {PluginName}（{PluginTypeName}）已被{Action}，其命令{Effect}。",
+            displayName,
+            pluginTypeName,
+            enabled ? "启用" : "停用",
+            enabled ? "恢复可触发" : "不再可触发");
+
+        return true;
+    }
+
+    /// <summary>按类型全名查找插件实例；找不到返回 <c>null</c>。</summary>
+    private IPlugin? FindPlugin(string pluginTypeName)
+    {
+        foreach (IPlugin plugin in _plugins)
+        {
+            if (string.Equals(GetTypeName(plugin), pluginTypeName, StringComparison.Ordinal))
+            {
+                return plugin;
+            }
+        }
+
+        return null;
+    }
 
     /// <summary>
     /// 加载全部插件：逐个执行「调用 OnLoadAsync 初始化 → 扫描 [OnCommand] 并注册命令」，
@@ -233,6 +317,16 @@ public sealed class PluginManager
     /// </summary>
     private static PluginLifecycleNext WrapMiddleware(IPluginLifecycleMiddleware middleware, PluginLifecycleNext next)
         => (context, cancellationToken) => middleware.InvokeAsync(context, next, cancellationToken);
+
+    /// <summary>
+    /// 读取插件类型全名。必须与 <see cref="CommandDispatcher.RegisterPluginCommands"/> 写入
+    /// <c>CommandRegistration.PluginName</c> 时的取法一致，门控才匹配得上。
+    /// </summary>
+    private static string GetTypeName(IPlugin plugin)
+    {
+        var pluginType = plugin.GetType();
+        return pluginType.FullName ?? pluginType.Name;
+    }
 
     /// <summary>读取插件显示名与版本：优先取 <see cref="PluginMetadataAttribute"/>，缺省回退到类型名。</summary>
     private static (string DisplayName, string Version) Describe(IPlugin plugin)

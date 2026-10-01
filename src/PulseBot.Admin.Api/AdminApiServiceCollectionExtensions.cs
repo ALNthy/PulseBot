@@ -1,7 +1,10 @@
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using PulseBot.Admin.Api.Hubs;
+using PulseBot.Admin.Api.Notifications;
 using PulseBot.Admin.Infrastructure.Auth;
 using PulseBot.Admin.Shared;
 
@@ -38,10 +41,39 @@ public static class AdminApiServiceCollectionExtensions
                 // 令牌是我们自己签的，映射只会让排查问题时多一层心智负担。
                 options.MapInboundClaims = false;
                 options.TokenValidationParameters = tokens.CreateValidationParameters();
+
+                options.Events = new JwtBearerEvents
+                {
+                    OnMessageReceived = static context =>
+                    {
+                        // WebSocket 握手由浏览器发起，带不了 Authorization 头，只能把令牌放在
+                        // 查询串里——这是 SignalR 官方文档给出的做法。
+                        // 仅对 Hub 路径生效：其余端点仍走标准头，免得令牌出现在会被访问日志、
+                        // 浏览器历史与代理日志记录的 URL 上。
+                        string? accessToken = context.Request.Query["access_token"];
+                        if (!string.IsNullOrEmpty(accessToken)
+                            && context.HttpContext.Request.Path.StartsWithSegments(AdminHub.Route))
+                        {
+                            context.Token = accessToken;
+                        }
+
+                        return Task.CompletedTask;
+                    },
+                };
             });
 
         services.AddAuthorizationBuilder()
             .AddPolicy(AdminPolicies.Admin, static policy => policy.RequireRole(AdminRoles.Admin));
+
+        // 实时推送。三者职责不同：缓冲负责解耦与限流，广播器负责把宿主日志接进来，
+        // 推送服务负责把缓冲里的内容送出去。
+        services.AddSignalR();
+        services.AddSingleton<AdminNotifications>();
+
+        // 注册为 ILoggerProvider 就会被日志系统自动接上（LoggerFactory 从容器解析全部该接口实现），
+        // 因此宿主不需要再调 AddProvider。后台关闭时它自己判断并完全不转发。
+        services.AddSingleton<ILoggerProvider, AdminLogBroadcaster>();
+        services.AddHostedService<AdminNotificationService>();
 
         return services;
     }

@@ -1,6 +1,4 @@
-using System.Collections.Frozen;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 using PulseBot.Core.Dispatching;
 using PulseBot.Core.Events;
 using PulseBot.Core.Messages;
@@ -25,35 +23,25 @@ namespace PulseBot.Core.Permissions;
 /// 这与「超管绕过权限节点检查」是两件独立的事。
 /// </para>
 /// <para>
-/// 名单是静态配置，进程内不提供运行时增删接口；后续若需要动态封禁，
-/// 应由后台管理把名单变更落库并驱动宿主重建配置。
+/// 名单不缓存在本类型里：每次判定从 <see cref="IAccessPolicy.Current"/> 取一份快照，
+/// 该操作只是一次引用读。因此后台更新名单后，下一条消息就按新规则判定，
+/// 既不需要重启宿主，也不需要重建中间件实例。
 /// </para>
 /// </remarks>
 public sealed class AccessControlMiddleware : MessageEventMiddleware
 {
-    private readonly FrozenSet<string> _userBlacklist;
-    private readonly FrozenSet<string> _userWhitelist;
-    private readonly FrozenSet<string> _groupBlacklist;
-    private readonly FrozenSet<string> _groupWhitelist;
-    private readonly FrozenSet<string> _superAdmins;
+    private readonly IAccessPolicy _policy;
     private readonly ILogger<AccessControlMiddleware> _logger;
 
     /// <summary>创建接入控制中间件。</summary>
-    /// <param name="options">权限配置（黑白名单与超级管理员名单）。</param>
+    /// <param name="policy">接入策略持有者（提供当前生效的黑白名单与超管名单）。</param>
     /// <param name="logger">结构化日志。</param>
-    public AccessControlMiddleware(IOptions<PermissionOptions> options, ILogger<AccessControlMiddleware> logger)
+    public AccessControlMiddleware(IAccessPolicy policy, ILogger<AccessControlMiddleware> logger)
     {
-        ArgumentNullException.ThrowIfNull(options);
+        ArgumentNullException.ThrowIfNull(policy);
         ArgumentNullException.ThrowIfNull(logger);
 
-        var value = options.Value;
-
-        // 四份名单在构造时冻结：每条消息都要至少查一次，这里换最省的查找结构。
-        _userBlacklist = value.UserBlacklist.ToFrozenSet(StringComparer.Ordinal);
-        _userWhitelist = value.UserWhitelist.ToFrozenSet(StringComparer.Ordinal);
-        _groupBlacklist = value.GroupBlacklist.ToFrozenSet(StringComparer.Ordinal);
-        _groupWhitelist = value.GroupWhitelist.ToFrozenSet(StringComparer.Ordinal);
-        _superAdmins = value.SuperAdmins.ToFrozenSet(StringComparer.Ordinal);
+        _policy = policy;
         _logger = logger;
     }
 
@@ -93,33 +81,37 @@ public sealed class AccessControlMiddleware : MessageEventMiddleware
     /// <summary>返回拦截原因；放行时返回 <c>null</c>。</summary>
     private string? GetBlockReason(MessageEvent message)
     {
-        if (_userBlacklist.Contains(message.SenderId))
+        // 每次判定读一次当前快照：名单可被后台热更新（整体替换），
+        // 这里取到的一定是自洽的一份，不会读到「改了一半」的中间状态。
+        AccessPolicySnapshot policy = _policy.Current;
+
+        if (policy.UserBlacklist.Contains(message.SenderId))
         {
             return "发送者在用户黑名单中";
         }
 
         var isGroupConversation = message.Conversation.Type != ConversationType.Private;
-        if (isGroupConversation && _groupBlacklist.Contains(message.Conversation.Id))
+        if (isGroupConversation && policy.GroupBlacklist.Contains(message.Conversation.Id))
         {
             return "所在群在群黑名单中";
         }
 
         // 超级管理员不受白名单限制：白名单是「只允许名单内的人使用」，
         // 若把管理员自己漏加就会导致机器人无法管理，因此这里直接放行。
-        if (_superAdmins.Contains(message.SenderId))
+        if (policy.SuperAdmins.Contains(message.SenderId))
         {
             return null;
         }
 
         // 白名单为空 = 不限制；非空才构成允许列表。
-        if (_userWhitelist.Count > 0 && !_userWhitelist.Contains(message.SenderId))
+        if (policy.UserWhitelist.Count > 0 && !policy.UserWhitelist.Contains(message.SenderId))
         {
             return "发送者不在用户白名单中";
         }
 
         if (isGroupConversation
-            && _groupWhitelist.Count > 0
-            && !_groupWhitelist.Contains(message.Conversation.Id))
+            && policy.GroupWhitelist.Count > 0
+            && !policy.GroupWhitelist.Contains(message.Conversation.Id))
         {
             return "所在群不在群白名单中";
         }

@@ -1,3 +1,4 @@
+using System.Globalization;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
@@ -37,15 +38,33 @@ internal static class AuthEndpoints
             return Results.BadRequest(new ApiError(ApiErrorCodes.InvalidRequest, "用户名与密码均不能为空。"));
         }
 
-        TokenPairResponse? tokens = await authentication
+        LoginAttemptResult result = await authentication
             .LoginAsync(request.UserName, request.Password, GetRemoteIp(http), cancellationToken)
             .ConfigureAwait(false);
 
-        return tokens is null
-            ? Results.Json(
-                new ApiError(ApiErrorCodes.InvalidCredentials, "用户名或密码错误。"),
-                statusCode: StatusCodes.Status401Unauthorized)
-            : Results.Ok(tokens);
+        switch (result.Outcome)
+        {
+            case LoginOutcome.Success:
+                // Outcome 为 Success 时 Tokens 一定非空，由 LoginAttemptResult.Success 保证。
+                return Results.Ok(result.Tokens);
+
+            case LoginOutcome.Locked:
+                // 向上取整：向下取整会让「还剩 0.4 秒」变成 Retry-After: 0，
+                // 客户端立刻重试又被拒，看起来像限流没有生效。
+                int retryAfterSeconds = (int)Math.Ceiling(result.RetryAfter.TotalSeconds);
+                http.Response.Headers.RetryAfter = retryAfterSeconds.ToString(CultureInfo.InvariantCulture);
+
+                return Results.Json(
+                    new ApiError(
+                        ApiErrorCodes.TooManyRequests,
+                        $"登录失败次数过多，请在 {retryAfterSeconds} 秒后重试。"),
+                    statusCode: StatusCodes.Status429TooManyRequests);
+
+            default:
+                return Results.Json(
+                    new ApiError(ApiErrorCodes.InvalidCredentials, "用户名或密码错误。"),
+                    statusCode: StatusCodes.Status401Unauthorized);
+        }
     }
 
     private static async Task<IResult> RefreshAsync(

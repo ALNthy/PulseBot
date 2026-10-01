@@ -11,7 +11,7 @@ namespace PulseBot.Admin.Infrastructure.Auth;
 
 /// <summary>后台认证：登录、刷新令牌轮换、登出。</summary>
 /// <remarks>
-/// 全部失败路径都返回 <c>null</c>/<c>false</c> 而不抛异常——认证失败的细节
+/// 全部失败路径都返回结果对象或 <c>false</c> 而不抛异常——认证失败的细节
 /// （账号不存在 / 已停用 / 密码错误）不对外区分，避免成为账号枚举的信息源；
 /// 真实原因进审计与结构化日志。
 /// </remarks>
@@ -20,10 +20,10 @@ public interface IAuthenticationService
     /// <summary>用账号密码换取令牌对。</summary>
     /// <param name="userName">用户名。</param>
     /// <param name="password">密码明文。</param>
-    /// <param name="remoteIp">来源 IP，用于审计。</param>
+    /// <param name="remoteIp">来源 IP，用于审计与限流。</param>
     /// <param name="cancellationToken">取消令牌。</param>
-    /// <returns>成功返回令牌对；账号不存在、已停用或密码错误返回 <c>null</c>。</returns>
-    ValueTask<TokenPairResponse?> LoginAsync(
+    /// <returns>成功、凭据错误或被限流三种结局之一。后两种不区分具体原因。</returns>
+    ValueTask<LoginAttemptResult> LoginAsync(
         string userName,
         string password,
         string? remoteIp,
@@ -58,6 +58,7 @@ public sealed class AuthenticationService : IAuthenticationService
     private readonly IPasswordHasher _passwordHasher;
     private readonly TokenService _tokens;
     private readonly IAuditLogStore _audit;
+    private readonly ILoginThrottleService _throttle;
     private readonly AdminAuthOptions _auth;
     private readonly TimeProvider _time;
     private readonly ILogger<AuthenticationService> _logger;
@@ -67,6 +68,7 @@ public sealed class AuthenticationService : IAuthenticationService
     /// <param name="passwordHasher">密码哈希。</param>
     /// <param name="tokens">令牌服务。</param>
     /// <param name="audit">审计日志存储。</param>
+    /// <param name="throttle">登录限流。</param>
     /// <param name="options">后台配置。</param>
     /// <param name="time">时间源。</param>
     /// <param name="logger">结构化日志。</param>
@@ -75,6 +77,7 @@ public sealed class AuthenticationService : IAuthenticationService
         IPasswordHasher passwordHasher,
         TokenService tokens,
         IAuditLogStore audit,
+        ILoginThrottleService throttle,
         IOptions<AdminOptions> options,
         TimeProvider time,
         ILogger<AuthenticationService> logger)
@@ -83,6 +86,7 @@ public sealed class AuthenticationService : IAuthenticationService
         ArgumentNullException.ThrowIfNull(passwordHasher);
         ArgumentNullException.ThrowIfNull(tokens);
         ArgumentNullException.ThrowIfNull(audit);
+        ArgumentNullException.ThrowIfNull(throttle);
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(time);
         ArgumentNullException.ThrowIfNull(logger);
@@ -91,13 +95,14 @@ public sealed class AuthenticationService : IAuthenticationService
         _passwordHasher = passwordHasher;
         _tokens = tokens;
         _audit = audit;
+        _throttle = throttle;
         _auth = options.Value.Auth;
         _time = time;
         _logger = logger;
     }
 
     /// <inheritdoc />
-    public async ValueTask<TokenPairResponse?> LoginAsync(
+    public async ValueTask<LoginAttemptResult> LoginAsync(
         string userName,
         string password,
         string? remoteIp,
@@ -105,6 +110,33 @@ public sealed class AuthenticationService : IAuthenticationService
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(userName);
         ArgumentNullException.ThrowIfNull(password);
+
+        // 限流判定排在最前，且不查库、不算哈希：锁定期间继续为每个请求付出一次
+        // PBKDF2 会白白烧掉 CPU，恰好抵消掉限流本应提供的防护。
+        //
+        // 「是否被锁定」只看请求自带的用户名与 IP 加进程内计数，与账号是否真实存在
+        // 完全无关，因此这条提前返回的路径不构成新的账号枚举信道。
+        if (_throttle.TryGetLockout(userName, remoteIp, out TimeSpan retryAfter))
+        {
+            string wait = DescribeDuration(retryAfter);
+
+            _logger.LogWarning(
+                "后台登录被限流：账号 {UserName}，来源 {RemoteIp}，还需等待 {RetryAfter}。",
+                userName,
+                remoteIp ?? "未知",
+                wait);
+
+            await _audit.RecordAsync(
+                new AuditEntry(
+                    Action: "auth.login",
+                    ActorName: userName,
+                    Detail: $"登录失败次数过多，已被限流（还需等待 {wait}）",
+                    RemoteIp: remoteIp,
+                    Success: false),
+                cancellationToken).ConfigureAwait(false);
+
+            return LoginAttemptResult.Locked(retryAfter);
+        }
 
         await using AdminDbContext db = await _dbFactory
             .CreateDbContextAsync(cancellationToken)
@@ -120,6 +152,10 @@ public sealed class AuthenticationService : IAuthenticationService
 
         if (user is null || !user.IsEnabled || !passwordMatches)
         {
+            // 账号不存在同样计数：否则攻击者可以拿一串不存在的用户名无限试，
+            // 只要避开真实用户名就永远不触发限流。
+            _throttle.RecordFailure(userName, remoteIp);
+
             _logger.LogWarning("后台登录失败：账号 {UserName}，来源 {RemoteIp}。", userName, remoteIp ?? "未知");
 
             await _audit.RecordAsync(
@@ -131,8 +167,10 @@ public sealed class AuthenticationService : IAuthenticationService
                     Success: false),
                 cancellationToken).ConfigureAwait(false);
 
-            return null;
+            return LoginAttemptResult.InvalidCredentials;
         }
+
+        _throttle.RecordSuccess(userName);
 
         user.LastLoginAt = _time.GetUtcNow();
         TokenPairResponse response = await IssueTokensAsync(db, user, cancellationToken).ConfigureAwait(false);
@@ -148,7 +186,7 @@ public sealed class AuthenticationService : IAuthenticationService
 
         _logger.LogInformation("后台登录成功：账号 {UserName}，来源 {RemoteIp}。", user.UserName, remoteIp ?? "未知");
 
-        return response;
+        return LoginAttemptResult.Success(response);
     }
 
     /// <inheritdoc />
@@ -259,6 +297,12 @@ public sealed class AuthenticationService : IAuthenticationService
 
         return true;
     }
+
+    /// <summary>把等待时长写成便于阅读的中文描述，向上取整到分钟/秒。</summary>
+    private static string DescribeDuration(TimeSpan duration)
+        => duration.TotalMinutes >= 1
+            ? $"{Math.Ceiling(duration.TotalMinutes)} 分钟"
+            : $"{Math.Ceiling(duration.TotalSeconds)} 秒";
 
     /// <summary>按明文哈希查找刷新令牌。</summary>
     private static Task<RefreshToken?> FindTokenAsync(

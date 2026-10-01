@@ -131,8 +131,14 @@ public sealed class ManagementService : IManagementService
             }
         }
 
+        // 遍历容器中登记的全部插件而不是「已加载」的那些：停用的插件必须仍然出现在列表里，
+        // 否则管理员在后台把它停用之后，就再也没有入口把它启用了。
+        // 按引用比较判断是否已加载——插件的相等语义没有约定，用默认比较器对该类型就是引用比较，
+        // 这里显式写出来，避免以后有人给插件重写 Equals 时静默改变这段的含义。
+        HashSet<IPlugin> loaded = new(_plugins.LoadedPlugins, ReferenceEqualityComparer.Instance);
+
         List<PluginInfo> plugins = [];
-        foreach (IPlugin plugin in _plugins.LoadedPlugins)
+        foreach (IPlugin plugin in _plugins.Plugins)
         {
             Type type = plugin.GetType();
             string typeName = type.FullName ?? type.Name;
@@ -149,7 +155,9 @@ public sealed class ManagementService : IManagementService
                 Dependencies: metadata?.Dependencies ?? [],
                 Commands: commandsByPlugin.TryGetValue(typeName, out List<string>? registered)
                     ? registered
-                    : []));
+                    : [],
+                IsEnabled: _plugins.IsEnabled(typeName),
+                IsLoaded: loaded.Contains(plugin)));
         }
 
         return ValueTask.FromResult<IReadOnlyList<PluginInfo>>(plugins);

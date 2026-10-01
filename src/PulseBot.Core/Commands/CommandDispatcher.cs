@@ -21,7 +21,8 @@ namespace PulseBot.Core.Commands;
 /// </list>
 /// <para>
 /// 线程安全：命令表在宿主启动阶段由单线程写入，启动完成后只读访问，因此使用普通字典。
-/// 后续若支持插件热重载的动态注册/注销，需要改为整体重建或并发结构（本步骤不做）。
+/// 插件启停不写命令表——被停用的插件依旧登记着它的命令，只是由
+/// <see cref="PluginStateRegistry"/> 在查找命中后把触发请求挡回去，因此运行期无并发写入问题。
 /// </para>
 /// </remarks>
 public sealed class CommandDispatcher : ICommandDispatcher
@@ -40,6 +41,9 @@ public sealed class CommandDispatcher : ICommandDispatcher
     /// <summary>权限判定入口：只有声明了 <c>[RequirePermission]</c> 的命令才会用到它。</summary>
     private readonly IPermissionService _permissionService;
 
+    /// <summary>插件启用状态：被后台停用的插件，其命令对外如同不存在。</summary>
+    private readonly PluginStateRegistry _pluginState;
+
     private readonly ILogger<CommandDispatcher> _logger;
 
     /// <summary>
@@ -47,18 +51,22 @@ public sealed class CommandDispatcher : ICommandDispatcher
     /// </summary>
     /// <param name="options">命令配置。</param>
     /// <param name="permissionService">权限判定服务（未声明要求的命令不会调用它）。</param>
+    /// <param name="pluginState">插件启用状态（未停用任何插件时判定近乎零开销）。</param>
     /// <param name="logger">结构化日志。</param>
     public CommandDispatcher(
         IOptions<CommandOptions> options,
         IPermissionService permissionService,
+        PluginStateRegistry pluginState,
         ILogger<CommandDispatcher> logger)
     {
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(permissionService);
+        ArgumentNullException.ThrowIfNull(pluginState);
         ArgumentNullException.ThrowIfNull(logger);
 
         _options = options.Value;
         _permissionService = permissionService;
+        _pluginState = pluginState;
         _logger = logger;
         _nameComparison = _options.CaseSensitive ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase;
         _commands = new Dictionary<string, CommandRegistration>(
@@ -174,6 +182,14 @@ public sealed class CommandDispatcher : ICommandDispatcher
 
         // 步骤 3：命令表查找（大小写策略由字典 Comparer 决定；无前缀模式同样要求命令名精确相等）。
         if (!_commands.TryGetValue(commandName, out var registration))
+        {
+            return ValueTask.FromResult(false);
+        }
+
+        // 步骤 4：插件门控。放在字典命中之后，未命中命令的消息（绝大多数）完全不付这次判定。
+        // 返回 false 表示「未消费」：被停用插件的命令对外如同不存在，消息继续流向普通监听器。
+        // 命令表里不保留被压制者的裁决结果，因此停用后该名字不会回退到低优先级的注册。
+        if (_pluginState.IsDisabled(registration.PluginName))
         {
             return ValueTask.FromResult(false);
         }

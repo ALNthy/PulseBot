@@ -29,6 +29,9 @@ public static class PermissionServiceCollectionExtensions
 
         services.AddOptions<PermissionOptions>();
 
+        // 策略快照的持有者：读路径无锁，写路径整体替换。后台管理通过它驱动名单热更新。
+        services.TryAddSingleton<IAccessPolicy, InMemoryAccessPolicy>();
+
         services.TryAddSingleton<IPermissionService, InMemoryPermissionService>();
 
         // 接入控制是消息的第一道闸门，注册为事件中间件即可，无需侵入事件分发实现。

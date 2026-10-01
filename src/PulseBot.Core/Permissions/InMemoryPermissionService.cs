@@ -1,8 +1,6 @@
 using System.Collections.Concurrent;
-using System.Collections.Frozen;
 using System.Collections.Immutable;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 using PulseBot.Core.Events;
 using PulseBot.Core.Messages;
 
@@ -29,31 +27,28 @@ public sealed class InMemoryPermissionService : IPermissionService
     /// <summary>授权表：主体 → 它拥有的权限节点集合（不可变，可直接无锁读取）。</summary>
     private readonly ConcurrentDictionary<PermissionSubject, ImmutableHashSet<string>> _grants = new();
 
-    /// <summary>超级管理员集合：构造时冻结，热路径查找零分配。</summary>
-    private readonly FrozenSet<string> _superAdmins;
+    /// <summary>接入策略持有者：超管名单与拒绝提示语都取自当前快照，因而支持热更新。</summary>
+    private readonly IAccessPolicy _policy;
 
     private readonly ILogger<InMemoryPermissionService> _logger;
 
     /// <summary>创建权限服务。</summary>
-    /// <param name="options">权限配置（超级管理员、拒绝提示语）。</param>
+    /// <param name="policy">接入策略持有者（提供超级管理员名单与拒绝提示语）。</param>
     /// <param name="logger">结构化日志。</param>
     public InMemoryPermissionService(
-        IOptions<PermissionOptions> options,
+        IAccessPolicy policy,
         ILogger<InMemoryPermissionService> logger)
     {
-        ArgumentNullException.ThrowIfNull(options);
+        ArgumentNullException.ThrowIfNull(policy);
         ArgumentNullException.ThrowIfNull(logger);
 
-        var value = options.Value;
-
-        // 冻结成 FrozenSet：超管检查在每条受保护命令上都要跑一次，这里换最省的查找结构。
-        _superAdmins = value.SuperAdmins.ToFrozenSet(StringComparer.Ordinal);
-        DeniedMessage = value.DeniedMessage ?? string.Empty;
+        _policy = policy;
         _logger = logger;
     }
 
     /// <inheritdoc />
-    public string DeniedMessage { get; }
+    /// <remarks>每次读取取当前快照，因此后台更新提示语后立即生效。</remarks>
+    public string DeniedMessage => _policy.Current.DeniedMessage;
 
     /// <inheritdoc />
     public ValueTask<bool> IsGrantedAsync(
@@ -208,5 +203,5 @@ public sealed class InMemoryPermissionService : IPermissionService
         => _grants.TryGetValue(subject, out var nodes)
             && (nodes.Contains(node) || nodes.Contains(WildcardNode));
 
-    private bool IsSuperAdmin(string userId) => _superAdmins.Contains(userId);
+    private bool IsSuperAdmin(string userId) => _policy.Current.SuperAdmins.Contains(userId);
 }

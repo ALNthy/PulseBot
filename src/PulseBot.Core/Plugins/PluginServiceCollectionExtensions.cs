@@ -18,6 +18,10 @@ public static class PluginServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(services);
 
         services.AddPulseBotCommands();
+
+        // 插件启用状态：命令分发与插件管理器共用同一份，后台管理通过它驱动启停。
+        services.TryAddSingleton<PluginStateRegistry>();
+
         services.TryAddSingleton<PluginManager>();
         return services;
     }

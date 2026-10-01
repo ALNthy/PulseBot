@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using PulseBot.Admin.Api.Endpoints;
+using PulseBot.Admin.Api.Hubs;
 using PulseBot.Admin.Shared;
 
 namespace PulseBot.Admin.Api;
@@ -48,6 +49,14 @@ public static class AdminApiEndpointRouteBuilderExtensions
 
         // 监控端点统一要求持有管理员角色。
         MonitoringEndpoints.Map(group);
+
+        // 账号管理与运行时控制：同样要求管理员角色，且每个写操作都会写审计。
+        AccountEndpoints.Map(group);
+        ControlEndpoints.Map(group);
+
+        // 实时推送的 Hub。与 REST 端点一样受 Admin:Enabled 控制——
+        // 后台关闭时这一段代码根本不会执行，Hub 也就不会被映射。
+        endpoints.MapHub<AdminHub>(AdminHub.Route);
 
         return endpoints;
     }

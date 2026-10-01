@@ -5,10 +5,12 @@ using Microsoft.Extensions.DependencyInjection;
 using PulseBot.Adapter.Console;
 using PulseBot.Adapter.OneBot.V12;
 using PulseBot.Admin.Api;
+using PulseBot.Admin.Api.Notifications;
 using PulseBot.Admin.Infrastructure;
 using PulseBot.Admin.Shared;
 using PulseBot.Cli;
 using PulseBot.Core;
+using PulseBot.Core.Dispatching;
 using PulseBot.Core.Permissions;
 using PulseBot.Core.Plugins;
 using PulseBot.Core.Scheduling;
@@ -67,6 +69,10 @@ builder.Services.Configure<AdminOptions>(
     builder.Configuration.GetSection(AdminOptions.SectionName));
 builder.Services.AddAdminInfrastructure();
 builder.Services.AddAdminApi();
+
+// 后台的实时事件流：把每条进入管道的事件复制一份摘要推给后台。
+// 挂在 Core 的中间件扩展点上，具体位置由中间件自身的优先级决定（见 AdminEventMirror.Priority）。
+builder.Services.AddEventMiddleware<AdminEventMirror>();
 
 // 监听地址要在 Build 之前交给 Kestrel。这里读一次配置用于装配期决策，
 // 运行期各服务一律通过 IOptions<AdminOptions> 取值（同上方的 Configure 调用）。

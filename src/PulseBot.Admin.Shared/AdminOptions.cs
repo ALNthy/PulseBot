@@ -34,6 +34,38 @@ public sealed class AdminOptions
 
     /// <summary>认证与令牌配置。</summary>
     public AdminAuthOptions Auth { get; set; } = new();
+
+    /// <summary>登录限流配置。</summary>
+    public AdminThrottleOptions Throttle { get; set; } = new();
+}
+
+/// <summary>
+/// 登录限流配置。
+/// </summary>
+/// <remarks>
+/// <para>
+/// 计数保存在进程内存里：重启即清零，多实例之间不共享。这是有意的取舍——后台管理是
+/// 单实例部署的运维界面，把每次失败都写库会带来写放大与清理任务，收益与复杂度不成比例。
+/// 失败事实本身已经由审计日志落库，可追溯。
+/// </para>
+/// <para>
+/// 锁定时长固定而非指数增长：攻击者可以用已知用户名故意触发锁定（账号锁定型 DoS），
+/// 固定窗口让这种伤害有界且可预期。
+/// </para>
+/// </remarks>
+public sealed class AdminThrottleOptions
+{
+    /// <summary>失败统计的时间窗口。超出窗口的失败不累计。</summary>
+    public TimeSpan FailureWindow { get; set; } = TimeSpan.FromMinutes(15);
+
+    /// <summary>单个账号在窗口内允许的失败次数；达到该值即锁定。</summary>
+    public int MaxFailuresPerUser { get; set; } = 5;
+
+    /// <summary>单个来源 IP 在窗口内允许的失败次数；达到该值即锁定。取值应明显大于账号阈值。</summary>
+    public int MaxFailuresPerIp { get; set; } = 20;
+
+    /// <summary>触发后的锁定时长。</summary>
+    public TimeSpan LockoutDuration { get; set; } = TimeSpan.FromMinutes(15);
 }
 
 /// <summary>后台认证配置。</summary>

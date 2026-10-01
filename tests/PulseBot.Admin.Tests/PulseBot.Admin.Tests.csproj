@@ -11,6 +11,11 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\PulseBot.Admin.Infrastructure\PulseBot.Admin.Infrastructure.csproj" />
+    <!--
+      实时推送的三个组件（缓冲、日志广播器、事件镜像）定义在 Api 项目里。
+      引它同时会带来 ASP.NET Core 的框架引用，测试项目因此能用到 SignalR 的类型。
+    -->
+    <ProjectReference Include="..\..\src\PulseBot.Admin.Api\PulseBot.Admin.Api.csproj" />
   </ItemGroup>
 
   <ItemGroup>

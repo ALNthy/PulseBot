@@ -167,6 +167,7 @@ public sealed class CommandPermissionTests
         var dispatcher = new CommandDispatcher(
             Options.Create(new CommandOptions()),
             permissionService,
+            new PluginStateRegistry(),
             NullLogger<CommandDispatcher>.Instance);
 
         dispatcher.RegisterPluginCommands(plugin);
@@ -174,7 +175,9 @@ public sealed class CommandPermissionTests
     }
 
     private static InMemoryPermissionService CreateService(PermissionOptions? options = null) =>
-        new(Options.Create(options ?? new PermissionOptions()), NullLogger<InMemoryPermissionService>.Instance);
+        new(
+            new InMemoryAccessPolicy(Options.Create(options ?? new PermissionOptions())),
+            NullLogger<InMemoryPermissionService>.Instance);
 
     private static MessageEvent CreateMessageEvent(
         string text,

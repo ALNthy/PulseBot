@@ -213,7 +213,7 @@ public sealed class SessionPromptTests
     public void 会话拦截优先级介于接入控制与命令分发之间()
     {
         var accessPriority = new AccessControlMiddleware(
-            Options.Create(new PermissionOptions()),
+            new InMemoryAccessPolicy(Options.Create(new PermissionOptions())),
             NullLogger<AccessControlMiddleware>.Instance).Priority;
 
         var sessionPriority = CreateMiddleware(new FakeTimeProvider(StartTime)).Priority;
@@ -234,6 +234,7 @@ public sealed class SessionPromptTests
     {
         var sessionOptions = new SessionOptions();
         var permissionOptions = new PermissionOptions { UserBlacklist = ["evil"] };
+        var accessPolicy = new InMemoryAccessPolicy(Options.Create(permissionOptions));
         var time = new FakeTimeProvider(StartTime);
 
         var store = new InMemorySessionStore(
@@ -262,7 +263,7 @@ public sealed class SessionPromptTests
                 [
                     CreateMiddleware(time, store, sessionOptions),           // int.MaxValue - 1
                     new AccessControlMiddleware(                             // int.MaxValue
-                        Options.Create(permissionOptions),
+                        accessPolicy,
                         NullLogger<AccessControlMiddleware>.Instance),
                 ],
                 NullLogger<EventDispatcher>.Instance),

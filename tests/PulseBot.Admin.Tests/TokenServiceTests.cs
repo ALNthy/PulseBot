@@ -99,8 +99,17 @@ public sealed class TokenServiceTests
         TokenService service = CreateService(new MutableTimeProvider(JustNow));
         (string token, _) = service.CreateAccessToken(NewUser());
 
-        char last = token[^1];
-        string tampered = token[..^1] + (last == 'A' ? 'B' : 'A');
+        // 改签名段的**首个**字符，而不是末位：Base64 每 4 个字符编码 3 字节，
+        // HMAC-SHA256 的 256 位签名编码成 43 个字符时，末位字符只有 4 位参与解码，
+        // 其余是填充。因而在 'A' 与 'B' 之间来回改末位，当原字符的高 4 位恰为 0
+        // （即字符是 A/B/C/D 之一，约 1/16 的概率）时解码出的签名字节完全相同——
+        // 令牌其实没被改动，校验照样通过，这个断言就会随机失败。
+        // 首字符的 6 位全部有效，任何改动都必然改变签名字节。
+        int signatureStart = token.LastIndexOf('.') + 1;
+        char first = token[signatureStart];
+        string tampered = token[..signatureStart]
+            + (first == 'A' ? 'B' : 'A')
+            + token[(signatureStart + 1)..];
 
         TokenValidationResult result = await new JsonWebTokenHandler()
             .ValidateTokenAsync(tampered, service.CreateValidationParameters());

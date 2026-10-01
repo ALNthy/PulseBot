@@ -203,15 +203,21 @@ public sealed class PluginLifecycleMiddlewareTests
         new(
             Options.Create(new CommandOptions()),
             new InMemoryPermissionService(
-                Options.Create(new PermissionOptions()),
+                new InMemoryAccessPolicy(Options.Create(new PermissionOptions())),
                 NullLogger<InMemoryPermissionService>.Instance),
+            new PluginStateRegistry(),
             NullLogger<CommandDispatcher>.Instance);
 
     private static PluginManager CreateManager(
         IEnumerable<IPlugin> plugins,
         IEnumerable<IPluginLifecycleMiddleware> middlewares,
         CommandDispatcher? dispatcher = null) =>
-        new(plugins, middlewares, dispatcher ?? CreateDispatcher(), NullLogger<PluginManager>.Instance);
+        new(
+            plugins,
+            middlewares,
+            dispatcher ?? CreateDispatcher(),
+            new PluginStateRegistry(),
+            NullLogger<PluginManager>.Instance);
 
     /// <summary>记录进入/退出的中间件；可跳过某个插件、或对指定插件抛异常。</summary>
     private sealed class RecordingMiddleware(List<string> log, string name) : IPluginLifecycleMiddleware

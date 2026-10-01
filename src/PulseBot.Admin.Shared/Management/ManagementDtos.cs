@@ -28,23 +28,34 @@ public sealed record HostStatusInfo(
 /// <param name="Platform">平台名，与 <c>ConversationId.Platform</c> 一致。</param>
 public sealed record AdapterInfo(string Name, string Platform);
 
-/// <summary>一个已加载的插件。</summary>
+/// <summary>容器中登记的一个插件。</summary>
 /// <param name="TypeName">
 /// 插件实现类型的全名（无命名空间时回退为短名）。
-/// 与命令表里 <see cref="CommandInfo.PluginName"/> 的取值口径一致，两者可直接关联。
+/// 与命令表里 <see cref="CommandInfo.PluginName"/> 的取值口径一致，两者可直接关联；
+/// 后台启停插件时用的也是这个值。
 /// </param>
 /// <param name="Name">显示名：取自 <c>[PluginMetadata]</c>，未标注时回退为类型全名。</param>
 /// <param name="Version">插件版本。</param>
 /// <param name="Description">插件描述。</param>
 /// <param name="Dependencies">声明的依赖插件名。</param>
 /// <param name="Commands">本插件注册的命令主名（别名已归并）。</param>
+/// <param name="IsEnabled">
+/// 是否处于启用状态。停用的插件仍然出现在列表里（否则管理员没法把它重新启用），
+/// 它的 <paramref name="Commands"/> 也照常列出——停用只让这些命令不可触发，不改变命令表。
+/// </param>
+/// <param name="IsLoaded">
+/// 是否成功走完加载流程。与 <paramref name="IsEnabled"/> 相互独立：
+/// 加载失败的插件不会是「已启用」，也不该被误认为是管理员停用的。
+/// </param>
 public sealed record PluginInfo(
     string TypeName,
     string Name,
     string Version,
     string? Description,
     IReadOnlyList<string> Dependencies,
-    IReadOnlyList<string> Commands);
+    IReadOnlyList<string> Commands,
+    bool IsEnabled,
+    bool IsLoaded);
 
 /// <summary>一个可触发的命令名。</summary>
 /// <param name="Name">当前可触发的名字（主名或别名）。</param>

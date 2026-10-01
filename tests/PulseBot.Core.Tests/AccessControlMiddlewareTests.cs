@@ -145,7 +145,9 @@ public sealed class AccessControlMiddlewareTests
     }
 
     private static AccessControlMiddleware CreateMiddleware(PermissionOptions options) =>
-        new(Options.Create(options), NullLogger<AccessControlMiddleware>.Instance);
+        new(
+            new InMemoryAccessPolicy(Options.Create(options)),
+            NullLogger<AccessControlMiddleware>.Instance);
 
     private static MessageEvent CreateMessageEvent(
         string senderId,

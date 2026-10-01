@@ -209,11 +209,13 @@ public sealed class CommandDispatcherTests
     private static CommandDispatcher CreateDispatcher(
         IEnumerable<IPlugin> plugins,
         CommandOptions options,
-        IPermissionService? permissionService = null)
+        IPermissionService? permissionService = null,
+        PluginStateRegistry? pluginState = null)
     {
         var dispatcher = new CommandDispatcher(
             Options.Create(options),
             permissionService ?? CreatePermissionService(),
+            pluginState ?? new PluginStateRegistry(),
             NullLogger<CommandDispatcher>.Instance);
 
         foreach (IPlugin plugin in plugins)
@@ -226,7 +228,9 @@ public sealed class CommandDispatcherTests
 
     /// <summary>创建使用默认权限配置（无超管、无黑白名单）的权限服务。</summary>
     private static InMemoryPermissionService CreatePermissionService() =>
-        new(Options.Create(new PermissionOptions()), NullLogger<InMemoryPermissionService>.Instance);
+        new(
+            new InMemoryAccessPolicy(Options.Create(new PermissionOptions())),
+            NullLogger<InMemoryPermissionService>.Instance);
 
     private static MessageEvent CreateMessageEvent(string text) => new()
     {

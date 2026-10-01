@@ -100,3 +100,46 @@ public sealed class AuditLog
     /// <summary>本次操作是否成功。</summary>
     public bool Success { get; set; }
 }
+
+/// <summary>
+/// 权限名单的持久化记录：一行承载一份名单。
+/// </summary>
+/// <remarks>
+/// <para>
+/// 名单是「后台可改、内核立即生效」的运行时配置，因此必须落库；配置文件里的名单
+/// 只在库里还没有这一份时用于播种。分份存放而不是揉成一个 JSON 对象，是为了让
+/// 每份名单各自独立更新——编辑用户黑名单不该顺带重写群白名单。
+/// </para>
+/// <para>
+/// 条目数组由 EF Core 序列化为 JSON 列。这里的条目是用户 id / 群 id 的原始字符串，
+/// 归一化（去空白、去空项）由内核侧的 <c>AccessPolicySnapshot</c> 统一负责，
+/// 落库时保持用户输入原样，便于后台回显。
+/// </para>
+/// </remarks>
+public sealed class PermissionListEntry
+{
+    /// <summary>名单标识（主键），取值见 <c>PulseBot.Admin.Infrastructure.Control.PermissionListKeys</c>。</summary>
+    public string Key { get; set; } = string.Empty;
+
+    /// <summary>名单条目。空数组表示该名单为空（而非「未配置」——未配置由「无此行」表示）。</summary>
+    public string[] Values { get; set; } = [];
+
+    /// <summary>最后修改时刻（UTC）。</summary>
+    public DateTimeOffset UpdatedAt { get; set; }
+}
+
+/// <summary>
+/// 被停用的插件：**有行即停用**。
+/// </summary>
+/// <remarks>
+/// 默认是全部启用，因此不需要布尔列——启停一行记录的增删即可表达，
+/// 也不会出现「is_enabled = true 的行」这种冗余状态。
+/// </remarks>
+public sealed class DisabledPlugin
+{
+    /// <summary>插件类型全名（主键），与命令注册时写入的插件名同口径。</summary>
+    public string PluginTypeName { get; set; } = string.Empty;
+
+    /// <summary>停用时刻（UTC）。</summary>
+    public DateTimeOffset UpdatedAt { get; set; }
+}

@@ -3,8 +3,10 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
+using PulseBot.Admin.Infrastructure.Accounts;
 using PulseBot.Admin.Infrastructure.Audit;
 using PulseBot.Admin.Infrastructure.Auth;
+using PulseBot.Admin.Infrastructure.Control;
 using PulseBot.Admin.Infrastructure.Management;
 using PulseBot.Admin.Shared;
 using PulseBot.Admin.Shared.Management;
@@ -54,17 +56,29 @@ public static class AdminInfrastructureServiceCollectionExtensions
 
         services.TryAddSingleton<IPasswordHasher, Pbkdf2PasswordHasher>();
         services.TryAddSingleton<TokenService>();
+
+        // 登录限流：认证服务的前置依赖。计数在内存中，注册为单例才能跨请求累计。
+        services.TryAddSingleton<ILoginThrottleService, InMemoryLoginThrottleService>();
+
         services.TryAddSingleton<IAuthenticationService, AuthenticationService>();
         services.TryAddSingleton<IAuditLogStore, AuditLogStore>();
         services.TryAddSingleton<IManagementService, ManagementService>();
+        services.TryAddSingleton<IAccountService, AccountService>();
 
+        // 运行时控制状态的持久化：名单与插件启停。内核侧的对应持有者由 Core 注册。
+        services.TryAddSingleton<IPermissionListStore, PermissionListStore>();
+        services.TryAddSingleton<IPluginStateStore, PluginStateStore>();
+        services.TryAddSingleton<IRuntimeControlService, RuntimeControlService>();
+
+        // 注册顺序即启动顺序：装载运行时状态要读的表由建库器创建，不能颠倒。
         services.AddHostedService<AdminDatabaseInitializer>();
+        services.AddHostedService<RuntimeControlInitializer>();
 
         return services;
     }
 
     /// <summary>把配置里的数据库路径解析为绝对路径。</summary>
-    private static string ResolveDatabasePath(string configuredPath)
+    internal static string ResolveDatabasePath(string configuredPath)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(configuredPath);
 
@@ -111,6 +125,17 @@ internal sealed class AdminOptionsValidator : IValidateOptions<AdminOptions>
         {
             return ValidateOptionsResult.Fail(
                 $"{AdminOptions.SectionName}:DatabasePath 不能为空。");
+        }
+
+        if (options.Throttle.FailureWindow <= TimeSpan.Zero
+            || options.Throttle.LockoutDuration <= TimeSpan.Zero
+            || options.Throttle.MaxFailuresPerUser <= 0
+            || options.Throttle.MaxFailuresPerIp <= 0)
+        {
+            return ValidateOptionsResult.Fail(
+                $"{AdminOptions.SectionName}:Throttle 的各项取值必须为正："
+                + "FailureWindow 与 LockoutDuration 是正的时长，MaxFailuresPerUser 与 MaxFailuresPerIp 是正整数。"
+                + "取 0 或负数会让限流要么永不触发、要么每次失败都触发，两者都不是预期的防护效果。");
         }
 
         return ValidateOptionsResult.Success;

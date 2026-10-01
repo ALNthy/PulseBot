@@ -90,14 +90,19 @@ public sealed class EndToEndFlowTests
     private static Harness CreateHarness(PermissionOptions? options = null)
     {
         var permissionOptions = options ?? new PermissionOptions();
+
+        // 权限服务与接入控制中间件共用同一份策略持有者，与宿主里的单例注册一致。
+        var accessPolicy = new InMemoryAccessPolicy(Options.Create(permissionOptions));
+
         var permissions = new InMemoryPermissionService(
-            Options.Create(permissionOptions),
+            accessPolicy,
             NullLogger<InMemoryPermissionService>.Instance);
 
         var plugin = new DemoPlugin();
         var commandDispatcher = new CommandDispatcher(
             Options.Create(new CommandOptions()),
             permissions,
+            new PluginStateRegistry(),
             NullLogger<CommandDispatcher>.Instance);
         commandDispatcher.RegisterPluginCommands(plugin);
 
@@ -113,7 +118,7 @@ public sealed class EndToEndFlowTests
                 [
                     new CommandMiddleware(commandDispatcher),                           // int.MaxValue - 2
                     new AccessControlMiddleware(                                        // int.MaxValue
-                        Options.Create(permissionOptions),
+                        accessPolicy,
                         NullLogger<AccessControlMiddleware>.Instance),
                 ],
                 NullLogger<EventDispatcher>.Instance),

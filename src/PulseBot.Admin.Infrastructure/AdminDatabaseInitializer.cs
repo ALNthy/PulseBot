@@ -13,11 +13,16 @@ namespace PulseBot.Admin.Infrastructure;
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>为什么用 <c>EnsureCreated</c> 而不是迁移</b>：第一期库里只有账号、刷新令牌与审计日志，
-/// 没有任何不可再生的业务数据，schema 变更时删掉数据库文件重建即可；换来的是不引入
-/// <c>dotnet-ef</c> 工具链与 Design 包。**一旦引入需要长期保留的后台数据（例如配置项），
-/// 就应改用迁移**——注意 <c>EnsureCreated</c> 建出的库没有迁移历史表，届时需要先删除
-/// 数据库文件，或手工补一条基线迁移。
+/// <b>为什么用 <c>EnsureCreated</c> 而不是迁移</b>：库里的数据（账号、刷新令牌、审计日志、
+/// 名单与插件启停状态）都可在删库后重建或重新配置，schema 变更时删掉数据库文件即可；
+/// 换来的是不引入 <c>dotnet-ef</c> 工具链与 Design 包。代价是 <c>EnsureCreated</c>
+/// **不会给已存在的库补建新表**，因此建库之后立刻用 <see cref="AdminSchemaGuard"/> 比对 schema，
+/// 把「运行期才炸的缺表错误」提前成一条照着做就能解决的启动期错误。
+/// </para>
+/// <para>
+/// <b>什么时候必须换成迁移</b>：当后台数据需要跨环境长期保留（正式部署、审计合规）时，
+/// 删库重建不再可接受，届时应改用迁移——注意 <c>EnsureCreated</c> 建出的库没有迁移历史表，
+/// 需要先删除数据库文件，或手工补一条基线迁移记录。
 /// </para>
 /// <para>
 /// 本服务在宿主启动阶段完成建库，之后后台接口才可能被访问。
@@ -70,9 +75,15 @@ public sealed class AdminDatabaseInitializer : IHostedService
             .CreateDbContextAsync(cancellationToken)
             .ConfigureAwait(false);
 
+        // 与连接串同一种解析方式：错误提示里的路径必须就是实际使用的文件。
+        string databasePath = AdminInfrastructureServiceCollectionExtensions.ResolveDatabasePath(_options.DatabasePath);
+
         await db.Database.EnsureCreatedAsync(cancellationToken).ConfigureAwait(false);
 
-        _logger.LogInformation("后台数据库已就绪：{DatabasePath}", _options.DatabasePath);
+        // 建库之后立刻比对 schema：EnsureCreated 只建缺失的库，不会给旧库补建新表。
+        await AdminSchemaGuard.VerifyAsync(db, databasePath, cancellationToken).ConfigureAwait(false);
+
+        _logger.LogInformation("后台数据库已就绪：{DatabasePath}", databasePath);
 
         await EnsureBootstrapUserAsync(db, cancellationToken).ConfigureAwait(false);
     }

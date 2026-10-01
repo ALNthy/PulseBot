@@ -60,6 +60,12 @@ public sealed class AdminDbContext : DbContext
     /// <summary>审计日志。</summary>
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
 
+    /// <summary>权限名单（后台可改、内核立即生效）。</summary>
+    public DbSet<PermissionListEntry> PermissionLists => Set<PermissionListEntry>();
+
+    /// <summary>被停用的插件（有行即停用）。</summary>
+    public DbSet<DisabledPlugin> DisabledPlugins => Set<DisabledPlugin>();
+
     /// <inheritdoc />
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -107,6 +113,21 @@ public sealed class AdminDbContext : DbContext
             entity.Property(log => log.TargetType).HasMaxLength(64);
             entity.Property(log => log.TargetId).HasMaxLength(128);
             entity.Property(log => log.RemoteIp).HasMaxLength(64);
+        });
+
+        modelBuilder.Entity<PermissionListEntry>(entity =>
+        {
+            // 名单标识是人为给定的稳定字符串（如 super-admins），直接用作主键。
+            entity.HasKey(entry => entry.Key);
+            entity.Property(entry => entry.Key).HasMaxLength(64);
+            entity.Property(entry => entry.UpdatedAt).HasConversion(UtcInstantConverter);
+        });
+
+        modelBuilder.Entity<DisabledPlugin>(entity =>
+        {
+            entity.HasKey(entry => entry.PluginTypeName);
+            entity.Property(entry => entry.PluginTypeName).HasMaxLength(256);
+            entity.Property(entry => entry.UpdatedAt).HasConversion(UtcInstantConverter);
         });
     }
 }

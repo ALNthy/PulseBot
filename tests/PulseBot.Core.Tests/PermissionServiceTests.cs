@@ -258,7 +258,9 @@ public sealed class PermissionServiceTests
     // ---------- 测试基础设施 ----------
 
     private static InMemoryPermissionService CreateService(PermissionOptions? options = null) =>
-        new(Options.Create(options ?? new PermissionOptions()), NullLogger<InMemoryPermissionService>.Instance);
+        new(
+            new InMemoryAccessPolicy(Options.Create(options ?? new PermissionOptions())),
+            NullLogger<InMemoryPermissionService>.Instance);
 
     private static MessageEvent CreateMessageEvent(
         string senderId,

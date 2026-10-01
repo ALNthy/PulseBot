@@ -137,19 +137,21 @@ public sealed class PluginManagerTests
 
     // ---------- 测试基础设施 ----------
 
-    private static CommandDispatcher CreateDispatcher() =>
+    private static CommandDispatcher CreateDispatcher(PluginStateRegistry? state = null) =>
         new(
             Options.Create(new CommandOptions()),
             new InMemoryPermissionService(
-                Options.Create(new PermissionOptions()),
+                new InMemoryAccessPolicy(Options.Create(new PermissionOptions())),
                 NullLogger<InMemoryPermissionService>.Instance),
+            state ?? new PluginStateRegistry(),
             NullLogger<CommandDispatcher>.Instance);
 
     private static PluginManager CreateManager(
         IEnumerable<IPlugin> plugins,
         CommandDispatcher dispatcher,
-        IEnumerable<IPluginLifecycleMiddleware>? middlewares = null) =>
-        new(plugins, middlewares ?? [], dispatcher, NullLogger<PluginManager>.Instance);
+        IEnumerable<IPluginLifecycleMiddleware>? middlewares = null,
+        PluginStateRegistry? state = null) =>
+        new(plugins, middlewares ?? [], dispatcher, state ?? new PluginStateRegistry(), NullLogger<PluginManager>.Instance);
 
     /// <summary>提供一条 ping 命令的插件，用于验证命令注册时机。</summary>
     private sealed class CommandPlugin : IPlugin

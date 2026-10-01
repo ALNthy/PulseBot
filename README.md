@@ -26,11 +26,11 @@
 | `PulseBot.Adapter.Console` | ✅ 已实现 — 把标准输入输出当作聊天平台，用于本地联调与新适配器的参考实现 |
 | `PulseBot.Plugins.Echo` | ✅ 已实现 — 示例插件（单轮命令 + 多轮对话两种形态） |
 | `PulseBot.Adapter.OneBot` | ✅ 已实现 — OneBot 12 反向 WebSocket（消息、通知、请求事件） |
-| `PulseBot.Admin.*` | ✅ 第一期 — 同进程只读监控（JWT 认证、状态查询、审计落库）；实时推送、写操作与前端待做 |
+| `PulseBot.Admin.*` | ✅ 已实现 — 同进程后台：JWT 认证、账号与密码管理、登录限流、状态查询、插件启停、权限名单热更新、审计落库、SignalR 实时推送；Vue 前端待做 |
 
-测试：257 个（Core 176 + Console 12 + OneBot 29 + Admin 40），`dotnet test` 全绿。
+测试：350 个（Core 193 + Console 12 + OneBot 29 + Admin 116），`dotnet test` 全绿。
 
-> 也就是说，**目前只有控制台这一个可用适配器** —— PulseBot 现在是个能在控制台里跑通完整链路的框架，还没有接入真实平台。
+> 也就是说，**开箱即可在控制台里跑通完整闭环**（发消息 → 事件管道 → 命令 → 回话）；接入真实平台用 `PulseBot.Adapter.OneBot`，它已实现 OneBot 12 反向 WebSocket 与消息、通知、请求三类事件的翻译。
 
 ## 环境要求
 
@@ -48,6 +48,8 @@ git clone https://github.com/ALNthy/PulseBot.git
 cd PulseBot
 dotnet run --project src/PulseBot.Cli
 ```
+
+宿主同时会在 `http://localhost:5187` 挂载后台管理接口（JWT 认证、监控、插件与权限写操作、实时推送，见[后台管理](#后台管理)）；只想跑机器人，把配置里的 `Admin:Enabled` 设为 `false` 即可。
 
 启动后会出现 `你> ` 提示符，直接输入即可：
 
@@ -218,9 +220,13 @@ dotnet run --project src/PulseBot.Cli
 
 ## 后台管理
 
-后台与机器人**同进程**运行：宿主在提供机器人的同时挂载一组只读 HTTP 接口，两者共用同一个 DI 容器——因此后台看到的是真实运行中的适配器、插件与调度器状态。
+后台与机器人**同进程**运行：宿主在提供机器人的同时挂载一组 HTTP 接口，两者共用同一个 DI 容器——因此后台看到的是真实运行中的适配器、插件与调度器，改动的也是内核正在用的那份权限与插件状态。它覆盖**可运维闭环**的三件事：
 
-第一期的范围是**只读监控闭环**：JWT 认证 + 状态查询 + 审计落库。实时推送（SignalR）、写操作（改配置、启停插件）与 Vue 前端尚未实现。
+- **看** —— 状态、适配器、插件、命令、定时任务、执行历史与审计记录的查询接口。
+- **管** —— 账号与密码管理、插件启停、权限名单热更新（写入立即生效，重启保持）。
+- **推** —— SignalR 实时推送宿主日志、事件摘要与运行状态。
+
+Vue 前端尚未创建，接口直接用 `curl` 验证即可。
 
 ### 启用
 
@@ -240,6 +246,8 @@ export Admin__Auth__SigningKey="<生成的随机串>"
 
 数据库用 SQLite，首次启动自动建表。引导账号只在**账号表为空**时创建，因此第一次登录后应立即把 `BootstrapPassword` 从配置里删掉。
 
+表结构会随版本增加，而项目尚未启用 EF 迁移（正式发布前会切过去）。启动时若发现数据库缺少当前版本需要的表，宿主会**直接失败并列出缺了哪几张表**，而不是让你在运行中撞上 `no such table`。开发期的处理办法是删掉数据库文件重启——丢失的只是后台自身的账号与审计数据，机器人不受影响。
+
 ### 登录
 
 ```bash
@@ -249,6 +257,8 @@ curl -X POST http://localhost:5187/admin/api/auth/login \
 ```
 
 返回 `accessToken`（默认 30 分钟）与 `refreshToken`（默认 7 天）。刷新会**轮换**刷新令牌——旧的立即作废，重放会被拒绝。
+
+登录失败按**账号**与**来源 IP** 两个维度独立限流（默认 15 分钟窗口内失败 5 次 / 20 次即锁定 15 分钟，阈值与时长可用 `Admin:Throttle` 调整），触发后返回 `429 too_many_requests`。被锁定的账号与不存在的账号一样计数、一样耗时，因此限流不会变成用户名探测器。计数在进程内存中，重启清零——后台是单实例的运维界面，为此写库的复杂度换不来实际收益，而失败事实本身已进审计。
 
 ### 接口一览
 
@@ -260,11 +270,21 @@ curl -X POST http://localhost:5187/admin/api/auth/login \
 | `POST` | `/admin/api/auth/logout` | 无 | 撤销刷新令牌，恒返回 204（幂等） |
 | `GET` | `/admin/api/status` | 需要 | 运行状态：启动时刻、运行时长、各子域计数 |
 | `GET` | `/admin/api/adapters` | 需要 | 已注册的适配器 |
-| `GET` | `/admin/api/plugins` | 需要 | 已加载的插件及其元数据与命令 |
+| `GET` | `/admin/api/plugins` | 需要 | 全部插件（含已停用的）及其元数据、命令与启停状态 |
 | `GET` | `/admin/api/commands` | 需要 | 全部命令名（含别名）与所属插件 |
 | `GET` | `/admin/api/scheduled-tasks` | 需要 | 定时任务清单与下次触发时刻 |
 | `GET` | `/admin/api/scheduled-tasks/executions` | 需要 | 最近执行记录，`?maxCount=` 控制条数 |
 | `GET` | `/admin/api/audit-logs` | 需要 | 最近审计记录，`?maxCount=` 控制条数 |
+| `GET` | `/admin/api/accounts` | 需要 | 后台账号列表 |
+| `POST` | `/admin/api/accounts` | 需要 | 创建账号 |
+| `PUT` | `/admin/api/accounts/me/password` | 需要 | 修改自己的密码（须提供当前密码） |
+| `PUT` | `/admin/api/accounts/{id}/password` | 需要 | 重置他人密码（忘记密码时唯一的救援通道） |
+| `PUT` | `/admin/api/accounts/{id}/state` | 需要 | 停用 / 启用账号 |
+| `POST` | `/admin/api/accounts/{id}/revoke-sessions` | 需要 | 强制下线：撤销该账号全部刷新令牌 |
+| `GET` | `/admin/api/access-policy` | 需要 | 读当前权限名单与拒绝提示 |
+| `PUT` | `/admin/api/access-policy/{listKey}` | 需要 | 改一份名单，**立即生效**；`listKey` 取读取接口返回的 `lists[].key` |
+| `PUT` | `/admin/api/plugins/{typeName}/state` | 需要 | 启用 / 停用插件，**立即生效**并持久化 |
+| `WS` | `/admin/hub` | 需要 | SignalR 实时推送，见下文「实时推送」 |
 
 认证端点之外的全部接口都要求 `admin` 角色：
 
@@ -272,11 +292,74 @@ curl -X POST http://localhost:5187/admin/api/auth/login \
 curl http://localhost:5187/admin/api/status -H "Authorization: Bearer <accessToken>"
 ```
 
+写操作的失败响应统一为 `{"code": "...", "message": "..."}`：`code` 是稳定契约（如 `account_not_found`、`last_enabled_account`、`target_not_found`、`too_many_requests`），`message` 可直接展示给用户。
+
+### 账号与密码管理
+
+```bash
+# 创建账号
+curl -X POST http://localhost:5187/admin/api/accounts \
+  -H "Authorization: Bearer <accessToken>" -H "Content-Type: application/json" \
+  -d '{"userName":"alice","password":"<至少 8 位>"}'
+
+# 改自己的密码（必须提供当前密码）
+curl -X PUT http://localhost:5187/admin/api/accounts/me/password \
+  -H "Authorization: Bearer <accessToken>" -H "Content-Type: application/json" \
+  -d '{"currentPassword":"<旧密码>","newPassword":"<新密码>"}'
+```
+
+操作者身份一律取自**访问令牌的声明**而非请求体——否则调用方可以冒用他人名义改密码，绕过「改自己的密码必须验旧密码」与「重置他人密码」的路径区分。
+
+几条不变量由服务层保证，接口层不重复实现：
+
+- **不能停用自己**；改自己的密码请走 `/me/password`。
+- **不能停用最后一个启用的账号**——否则会把自己锁在门外，且没有界面上的补救手段。
+- 改密码、重置密码与强制下线都会**撤销该账号的全部刷新令牌**；账号被停用后刷新令牌同样失效（登录与续期都校验启用状态）。
+- 已经签出去的访问令牌无法收回，见「安全说明」。
+
+### 插件启停与名单热更新
+
+```bash
+# 停用插件（typeName 取自 GET /plugins）
+curl -X PUT http://localhost:5187/admin/api/plugins/PulseBot.Plugins.Echo.EchoPlugin/state \
+  -H "Authorization: Bearer <accessToken>" -H "Content-Type: application/json" -d '{"enabled":false}'
+
+# 把用户加入黑名单（values 传空数组即清空该名单）
+curl -X PUT http://localhost:5187/admin/api/access-policy/user-blacklist \
+  -H "Authorization: Bearer <accessToken>" -H "Content-Type: application/json" \
+  -d '{"values":["10001"]}'
+```
+
+两类写入都是**先落库、再立即作用于运行中的内核**，无需重启；重启后从数据库恢复（数据库里的值优先于 `appsettings.json` 的播种值）。可改的名单共五份：`super-admins`、`user-blacklist`、`user-whitelist`、`group-blacklist`、`group-whitelist`。
+
+两条限制值得记住：
+
+- **停用插件只影响它注册的命令**，事件处理器不受影响——Core 里插件与事件处理器之间没有归属关系，命令是唯一可靠的停用语义。停用也不卸载插件，因此不释放它占用的资源。
+- **停用不会让命令「回退」到次优注册**：命令名冲突时框架只保留优先级最高的那个注册，被压制的在加载期就已丢弃，停用后该命令表现为「不可触发」。
+
+### 实时推送
+
+`/admin/hub` 是 SignalR Hub，连上后按三个方法推送：
+
+| 方法 | 内容 |
+| --- | --- |
+| `StatusChanged` | 运行状态快照；连接建立时立即推一份，之后每 5 秒一份 |
+| `LogReceived` | 宿主日志（Information 及以上），异常文本并入正文 |
+| `EventReceived` | 进入事件管道的事件摘要（类型、发送者、会话、正文预览） |
+
+浏览器的 WebSocket 握手带不了 `Authorization` 头，因此 Hub 允许把令牌放进查询串：`/admin/hub?access_token=<accessToken>`。这个口子**只对 Hub 路径开放**，其余端点仍走标准请求头——免得令牌出现在访问日志、浏览器历史与代理日志里。
+
+两处设计边界：
+
+- 推送缓冲是**有界**的（日志与事件各 1000 条），写满后丢弃最旧的条目。后台读取方一旦落后，丢弃只发生在缓冲内，绝不反压到宿主的日志与消息处理路径。
+- 事件镜像挂在接入控制中间件的**内层**，因此**看不到被黑白名单拦截的消息**——被拒绝的流量不会出现在事件流里，但仍会出现在日志里。
+
 ### 安全说明
 
-- **访问令牌是自包含 JWT，签发后无法撤销**——登出只撤销刷新令牌。这是无状态令牌的固有取舍，较短的有效期（默认 30 分钟）即为对冲。
+- **访问令牌是自包含 JWT，签发后无法撤销**——登出、改密、停用与强制下线都只能撤销刷新令牌，已签出的访问令牌在有效期内（默认 30 分钟）依然可用。这是无状态令牌的固有取舍，较短的有效期即为对冲。
 - **密码以 PBKDF2-HMAC-SHA256（21 万次迭代）存储**；刷新令牌只存 SHA-256 哈希，明文仅出现在签发响应里。
 - **登录失败不区分「账号不存在」「已停用」「密码错误」**：对外统一失败，真实原因进审计与日志；账号不存在时同样走一次等价的哈希计算，避免按响应时间枚举有效用户名。
+- **全部写操作都进审计**：账号操作（`account.*`）、控制操作（`control.*`）与认证事件（`auth.*`）都记录操作者、目标、来源 IP 与结果，可用 `GET /admin/api/audit-logs` 查询。
 - 对外提供服务时把 `Url` 改为 `http://0.0.0.0:5187`，并置于反向代理与 TLS 之后。
 
 ## 配置项一览
@@ -350,6 +433,10 @@ curl http://localhost:5187/admin/api/status -H "Authorization: Bearer <accessTok
 | `Auth:RefreshTokenLifetime` | `"7.00:00:00"` | 刷新令牌有效期 |
 | `Auth:BootstrapUser` | `"admin"` | 引导账号用户名；仅在账号表为空时创建 |
 | `Auth:BootstrapPassword` | 空 | 引导账号初始密码；为空则不创建账号（宿主记警告） |
+| `Throttle:FailureWindow` | `"00:15:00"` | 登录失败计数的时间窗口；超出窗口的失败不再累计 |
+| `Throttle:MaxFailuresPerUser` | `5` | 单账号在窗口内允许的失败次数，达到即锁定 |
+| `Throttle:MaxFailuresPerIp` | `20` | 单来源 IP 在窗口内允许的失败次数；应明显大于账号阈值（NAT 后的多个用户共用出口 IP） |
+| `Throttle:LockoutDuration` | `"00:15:00"` | 触发后的锁定时长 |
 
 ## 项目结构
 
@@ -361,8 +448,8 @@ src/
   PulseBot.Adapter.OneBot/       OneBot 适配器，当前实现了 12 版（反向 WebSocket）
   PulseBot.Plugins.Echo/         示例插件
   PulseBot.Admin.Shared/         后台共享契约：配置、DTO、枚举（零依赖）
-  PulseBot.Admin.Infrastructure/ 后台基础设施：EF Core、认证与令牌、审计、监控数据聚合
-  PulseBot.Admin.Api/            后台 HTTP 层：端点映射与 JWT 认证（类库，由 Cli 挂载）
+  PulseBot.Admin.Infrastructure/ 后台基础设施：EF Core、认证与令牌、账号服务、运行时控制、登录限流、审计
+  PulseBot.Admin.Api/            后台 HTTP 层：REST 端点、JWT 认证、SignalR Hub 与实时推送（类库，由 Cli 挂载）
 tests/
   PulseBot.Core.Tests/
   PulseBot.Adapter.Console.Tests/
@@ -622,16 +709,16 @@ dotnet format PulseBot.slnx                    # 提交前格式化
 
 Core 的地基已完整，尚未实现的主要是：
 
-- **限流、审计与 IP 级黑白名单** — 三处中间件管道（事件、出站、插件生命周期）已经就位，但这些具体策略尚未实现；事件侧目前只内建了接入控制与会话拦截。
+- **消息侧的限流防刷与 IP 级黑白名单** — 三处中间件管道（事件、出站、插件生命周期）已经就位，但这两类策略尚未实现；事件侧目前只内建了接入控制与会话拦截。后台账号的登录限流（见「后台管理」）作用于 HTTP 登录，与消息侧无关。
 - **通知类 / 请求类事件的覆盖面** — `NoticeEvent` / `RequestEvent` 已就位，但只翻译了 OneBot 12 的标准类型，平台特有类型统一归入 `NoticeKind.Other`（原始类型见 `RawType`）。
 - **插件依赖解析与热重载** — `[PluginMetadata]` 的 `Dependencies` 目前仅承载元数据。
 - **消息段补全** — Markdown、按钮、云文档等段类型尚未定义。
 - **适配器状态契约** — 供后台显示在线/掉线状态；适配器目前不向外暴露连接状态。
-- **持久化与多实例** — 会话、权限、调度执行历史与分布式锁目前均为内存实现（单机可用）。
-- **后台管理的后续** — 第一期的只读监控闭环已完成；实时推送（SignalR）、写操作（改配置、启停插件）与 Vue 前端待做。
+- **持久化与多实例** — 会话、调度执行历史与分布式锁目前均为内存实现（单机可用）。权限名单由后台负责持久化（落 SQLite，启动时装进内存快照、改动立即生效），但多实例之间仍不共享。
+- **后台管理的后续** — 账号与密码管理、登录限流、插件启停、权限名单热更新与 SignalR 实时推送均已完成；Vue 前端待做；通用配置热重载（端口、监听地址这类结构性配置改了也无法生效，因此本期未纳入）与后台数据库的 EF 迁移待补。
 
 接入真实平台的第一步——补齐事件类型、消息段，并实现 `Adapter.OneBot`（OneBot 12 反向 WebSocket）——已经完成；
-后台管理的第一期（只读监控闭环）也已完成。后续按上面的顺序推进。
+后台管理的可运维闭环（账号、限流、写操作、实时推送）也已完成。后续按上面的顺序推进。
 
 ## 许可证
 
