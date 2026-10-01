@@ -11,7 +11,7 @@ namespace PulseBot.Core.Adapters;
 /// 同一平台注册多个适配器属于配置错误，构造时立即失败（fail fast），
 /// 避免运行期出现「消息随机发往某个账号」的不可预期行为。
 /// 后续若需同平台多实例（多个机器人账号），扩展方向是让事件额外携带来源适配器实例名并按实例路由，
-/// 第一步不引入该复杂度。
+/// 当前未引入该复杂度。
 /// </remarks>
 public sealed class AdapterMessageSender : IMessageSender
 {

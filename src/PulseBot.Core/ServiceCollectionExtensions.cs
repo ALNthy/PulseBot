@@ -32,8 +32,9 @@ public static class ServiceCollectionExtensions
     /// （权限域随命令域自动就位）。
     /// </para>
     /// <para>
-    /// 调用顺序不影响事件处理器的执行顺序：内建处理器各占一个互不相同的优先级
-    /// （接入控制 → 会话拦截 → 命令分发），不依赖注册先后。
+    /// 调用顺序不影响事件处理器的执行顺序：Core 内建的三个中间件各占一个互不相同的优先级
+    /// （接入控制 → 会话拦截 → 命令分发），不依赖注册先后；宿主另行注册的中间件请避开这三档
+    /// （与内建中间件同优先级时，按 DI 注册顺序进入）。
     /// </para>
     /// </remarks>
     public static IServiceCollection AddPulseBot(this IServiceCollection services)

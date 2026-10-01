@@ -13,10 +13,14 @@ namespace PulseBot.Core.Plugins;
 /// <code>
 /// var app = builder.Build();
 /// var pluginManager = app.Services.GetRequiredService&lt;PluginManager&gt;();
-/// await pluginManager.LoadAllAsync(app.Lifetime.ApplicationStopping);
+/// await pluginManager.LoadAllAsync(startupToken);                        // 加载：启动期令牌
 /// // ... 运行 ...
-/// await pluginManager.UnloadAllAsync(CancellationToken.None); // 优雅关闭
+/// await pluginManager.UnloadAllAsync(app.Lifetime.ApplicationStopping);  // 卸载：关闭期令牌
 /// </code>
+/// <para>
+/// 两个阶段用的令牌不同：加载发生在启动阶段，此时 <c>ApplicationStopping</c> 尚未触发，
+/// 用它会让「启动中途收到关闭信号」无法中断加载；卸载才该监听 <c>ApplicationStopping</c>。
+/// </para>
 /// <para>
 /// 命令表条目与宿主生命周期一致：插件的启停（<see cref="SetPluginEnabled"/>）不增删条目，
 /// 只切换「是否可触发」，因此命令表在启动完成后始终是只读的。

@@ -6,7 +6,7 @@ namespace PulseBot.Core.Adapters;
 /// 适配器契约：某个聊天平台接入 PulseBot 的唯一边界。
 /// </summary>
 /// <remarks>
-/// 反向 WebSocket 形状（第一步不实现，接口按此设计）：
+/// 按反向 WebSocket 形状设计（宿主启动监听、平台侧主动连入；参考实现见 PulseBot.Adapter.OneBot）：
 /// 1. 宿主调用 <see cref="StartAsync"/>，适配器自行启动监听（端口/路径来自其 IOptions 配置），
 ///    等待平台侧（NapCat / Lagrange 等）主动连入；停止时 <see cref="StopAsync"/> 关闭监听并断开连接；
 /// 2. 收到平台报文后，适配器把原始消息转换为 Core 的 IEvent（典型为 MessageEvent），

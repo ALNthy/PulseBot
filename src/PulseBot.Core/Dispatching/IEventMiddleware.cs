@@ -46,10 +46,12 @@ public delegate ValueTask EventMiddlewareNext(
 /// 或直接继承 <see cref="MessageEventMiddleware"/>。
 /// </para>
 /// <para>
-/// 框架内建的三个中间件占据 <see cref="int.MaxValue"/> 起的三档且互不相同，依次为：接入控制
+/// Core 内建的三个中间件占据 <see cref="int.MaxValue"/> 起的三档且互不相同，依次为：接入控制
 /// （<c>AccessControlMiddleware</c>）、会话拦截（<c>SessionPromptMiddleware</c>）、
 /// 命令分发（<c>CommandMiddleware</c>）。因此它们的执行顺序只由数值决定，与 DI 注册顺序无关；
-/// 同优先级的中间件按注册顺序进入。
+/// 同优先级的中间件按注册顺序进入——宿主注册的中间件可能与内建中间件落进同一档
+/// （例如后台的事件镜像与会话拦截同为 <c>int.MaxValue - 1</c>）。
+/// <b>自建中间件请避开这三档</b>，否则会打乱「先拦截 → 再截获回答 → 再匹配命令」的次序。
 /// </para>
 /// <para>
 /// 中间件内部抛出的异常由分发器统一捕获并记录，不会向上传播、也不会导致宿主崩溃；

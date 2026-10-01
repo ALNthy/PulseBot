@@ -19,8 +19,8 @@ namespace PulseBot.Cli;
 ///   <item><description>关闭：先停适配器（不再接收新事件），再卸载插件（释放资源），即启动的逆序。</description></item>
 /// </list>
 /// <para>
-/// 适配器数量在第一步为 0（OneBot 适配器尚未实现），此时本服务退化为一台「就绪状态播报器」，
-/// 用于验证装配链路是否打通。
+/// 适配器数量取决于宿主注册了几个：默认宿主同时注册控制台与 OneBot 12 两个适配器；
+/// 一个都不注册时本服务退化为「就绪状态播报器」，仍可用于验证装配链路是否打通。
 /// </para>
 /// </remarks>
 internal sealed class PulseBotLifecycleService : IHostedService
