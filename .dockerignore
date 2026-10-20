@@ -1,0 +1,22 @@
+# 构建输出与 IDE 文件：镜像内一律由源码重新生成。
+**/bin/
+**/obj/
+**/.vs/
+**/.vscode/
+**/.idea/
+
+# 版本库与 CI：构建不需要。
+.git/
+.github/
+
+# 测试、文档与本地配置不参与运行时镜像。
+tests/
+docs/
+*.md
+*.log
+docker/.env
+
+# 本地运行产生的 SQLite 文件（若曾在仓库目录运行过宿主）。
+*.db
+*.db-wal
+*.db-shm

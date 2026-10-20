@@ -26,3 +26,7 @@ dist/
 *.log
 logs/
 *.tmp
+
+# ---------- Docker 本地配置 ----------
+# 含签名密钥与管理员密码，只保留 .env.example 模板。
+docker/.env

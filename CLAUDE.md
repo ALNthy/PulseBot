@@ -97,7 +97,7 @@ dotnet test                      # 全量测试
 dotnet test --filter "Category=Unit"  # 快速单元测试
 dotnet test --filter "Category=Integration"  # 后台 API 集成测试
 dotnet run --project src/PulseBot.Cli   # 宿主；后台管理随它一同启动
-docker compose -f docker/docker-compose.yml up -d
+cd docker && docker compose up -d --build   # 容器部署（首次先 cp .env.example .env）
 cd src/PulseBot.Admin.Web && npm run dev
 dotnet format                    # 提交前格式化
 ```

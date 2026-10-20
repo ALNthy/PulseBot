@@ -77,6 +77,64 @@ dotnet run --project src/PulseBot.Cli
 | `:switch private` / `:switch group <群号>` | 切换当前会话（用于验证「同一群里每人独立」） |
 | `exit` | 结束输入（机器人继续运行，Ctrl+C 退出宿主） |
 
+## Docker 部署
+
+仓库自带 [Dockerfile](Dockerfile) 与 [docker/docker-compose.yml](docker/docker-compose.yml)。
+镜像以非 root 用户运行，后台管理（5187）与 OneBot 12 反向 WebSocket（6700）同进程暴露。
+
+### 1. 准备密钥
+
+```bash
+cd docker
+cp .env.example .env
+```
+
+后续命令都在 `docker/` 目录执行——Compose 的变量替换只读取当前工作目录的 `.env`。
+编辑 `docker/.env`，至少填写：
+
+| 变量 | 说明 |
+| --- | --- |
+| `PULSEBOT_SIGNING_KEY` | JWT 签名密钥，用 `openssl rand -base64 48` 生成（至少 32 字节） |
+| `PULSEBOT_ADMIN_PASSWORD` | 首次启动创建的引导管理员密码 |
+| `PULSEBOT_ONEBOT_TOKEN` | 可选；6700 端口对外开放时建议设置 |
+
+`docker/.env` 已被 `.gitignore` 忽略，不会进入版本库。
+
+### 2. 启动
+
+```bash
+docker compose up -d --build
+```
+
+- 后台管理：<http://localhost:5187>
+- OneBot 12 反向 WebSocket：`ws://<宿主机地址>:6700/onebot/v12/`（由实现端主动连入）
+- 健康检查：容器每 30 秒请求一次 `/health`
+
+### 3. 常用操作
+
+```bash
+docker compose logs -f         # 查看日志
+docker compose ps              # 查看状态
+docker compose down            # 停止（保留数据卷）
+docker compose up -d --build   # 升级：拉取源码后重建
+```
+
+### 4. 数据与配置
+
+- **数据持久化**：SQLite 库位于命名卷 `pulsebot-data` 的
+  `/app/data/pulsebot-admin.db`，包含账号、刷新令牌、审计日志、权限名单与插件启停状态；
+  `down` 不会删除它，只有 `down -v` 才会。
+- **配置覆盖**：与本地运行一致，环境变量用双下划线映射配置节，例如
+  `Adapters__Email__Enabled=true`；邮箱参数见[邮件适配器使用指南](docs/EMAIL.md)。
+- **控制台适配器**：容器内没有标准输入，它在启动后会自动停止读取，不影响宿主运行。
+
+### 5. 注意事项
+
+- compose 已把 `Admin__Url` 与 `Adapters__OneBot12__Host` 设为 `0.0.0.0`——
+  容器内保持默认的 `localhost` 会导致端口映射无法访问。
+- 如果关闭后台（`Admin__Enabled=false`），`/health` 不再存在，请同步移除 compose 里的 `healthcheck`。
+- 对外暴露 5187 / 6700 前，请置于反向代理与 TLS 之后，并为 OneBot 握手设置访问令牌。
+
 ## 事件驱动原理
 
 一条消息从进入框架到机器人回话，全程只有「一次查表 + 若干次委托调用」，没有任何反射。下图是完整闭环——**中间件管道与处理器列表是所有插件共用的一条链**：
@@ -446,6 +504,8 @@ curl -X PUT http://localhost:5187/admin/api/access-policy/user-blacklist \
 | `AllowedDomains` | `[]` | 允许交互的发件人域名；与 `AllowedSenders` 取并集，二者都为空时适配器拒绝启动 |
 
 > 邮件适配器首版只做纯文本私聊闭环：不做附件、HTML 富文本与邮件列表的会话建模，HTML-only 邮件会剥标签转纯文本。`From` 头可以伪造，因此适配器默认拒绝白名单之外的邮件；**不要把邮箱地址直接加进 `Permissions:SuperAdmins`**，除非你接受发件人身份不可信的风险。自动回复、退信与邮件列表流量（`Auto-Submitted`、`Precedence`、`List-Id`）会被丢弃，以避免自动互发循环。
+>
+> 完整的配置说明、服务商示例与排错见 [邮件适配器使用指南](docs/EMAIL.md)。
 
 **`Admin`** —— 后台管理（与机器人同进程）：
 
