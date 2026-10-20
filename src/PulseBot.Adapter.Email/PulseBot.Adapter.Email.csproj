@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    邮件适配器：把自有 IMAP/SMTP 邮箱接入 PulseBot。
+    与其他适配器并列，只依赖 Core 的公开契约；收件用 IMAP IDLE，发件用 SMTP。
+  -->
+  <PropertyGroup>
+    <RootNamespace>PulseBot.Adapter.Email</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\PulseBot.Core\PulseBot.Core.csproj" />
+    <PackageReference Include="MailKit" />
+    <PackageReference Include="MimeKit" />
+  </ItemGroup>
+
+</Project>

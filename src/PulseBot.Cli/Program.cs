@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using PulseBot.Adapter.Console;
+using PulseBot.Adapter.Email;
 using PulseBot.Adapter.OneBot.V12;
 using PulseBot.Admin.Api;
 using PulseBot.Admin.Api.Notifications;
@@ -62,6 +63,12 @@ builder.Services.AddConsoleAdapter();
 builder.Services.Configure<OneBot12Options>(
     builder.Configuration.GetSection(OneBot12Options.SectionName));
 builder.Services.AddOneBot12Adapter();
+
+// 邮件适配器：默认关闭（Adapters:Email:Enabled = false），启用后以 IMAP 收件、SMTP 发件。
+// 关闭时只登记适配器，不产生任何邮箱连接；发送会返回 NotConnected。
+builder.Services.Configure<EmailAdapterOptions>(
+    builder.Configuration.GetSection(EmailAdapterOptions.SectionName));
+builder.Services.AddEmailAdapter();
 
 // 后台管理：数据访问、认证、审计，以及只读监控端点的实现。
 // 配置非法（例如启用后台却没配签名密钥）会在下面的 Build() 阶段直接失败。
