@@ -1,9 +1,7 @@
 using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
-using PulseBot.Admin.Api.Endpoints;
 using PulseBot.Admin.Api.Hubs;
 using PulseBot.Admin.Shared;
 
@@ -40,19 +38,13 @@ public static class AdminApiEndpointRouteBuilderExtensions
             return endpoints;
         }
 
-        endpoints.MapGet("/health", static () => Results.Ok(new { status = "healthy" }));
-
-        RouteGroupBuilder group = endpoints.MapGroup(RoutePrefix);
-
-        // 认证端点匿名可达（登录本身不需要令牌）。
-        AuthEndpoints.Map(group);
-
-        // 监控端点统一要求持有管理员角色。
-        MonitoringEndpoints.Map(group);
-
-        // 账号管理与运行时控制：同样要求管理员角色，且每个写操作都会写审计。
-        AccountEndpoints.Map(group);
-        ControlEndpoints.Map(group);
+        // REST 端点全部由 Controllers/ 下的 MVC 控制器提供：控制器在 AddAdminApi() 中
+        // 通过 AddApplicationPart 登记到 MVC，这里只负责把它们映射进请求管道。
+        // 健康检查、认证、监控、账号与控制端点都在其中，各自的认证要求写在控制器上。
+        //
+        // 注意 MapControllers 映射的是「所有已注册的控制器」：目前只有本程序集被显式登记，
+        // 若未来宿主自行注册了控制器，也会被一并映射出来。
+        endpoints.MapControllers();
 
         // 实时推送的 Hub。与 REST 端点一样受 Admin:Enabled 控制——
         // 后台关闭时这一段代码根本不会执行，Hub 也就不会被映射。

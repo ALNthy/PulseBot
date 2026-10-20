@@ -47,12 +47,27 @@
     <PackageVersion Include="Microsoft.IdentityModel.JsonWebTokens" Version="8.0.1" />
   </ItemGroup>
 
+  <ItemGroup Label="邮件适配器">
+    <!--
+      IMAP / SMTP / MIME 解析。.NET BCL 没有 IMAP 客户端，System.Net.Mail.SmtpClient
+      也已不被推荐用于新开发，因此引入 MailKit；MimeKit 是它的消息模型依赖，二者版本同步发布。
+      直接使用 MimeKit 类型（MimeMessage、MailboxAddress 等），故显式声明而不是依赖传递引用。
+    -->
+    <PackageVersion Include="MailKit" Version="4.18.1" />
+    <PackageVersion Include="MimeKit" Version="4.18.1" />
+  </ItemGroup>
+
   <ItemGroup Label="测试">
     <PackageVersion Include="Moq" Version="4.20.72" />
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
     <PackageVersion Include="xunit" Version="2.9.3" />
     <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.4" />
     <PackageVersion Include="coverlet.collector" Version="6.0.4" />
+    <!--
+      后台 API 集成测试：在进程内托管真实的 ASP.NET Core 管道（路由、认证、模型绑定、控制器），
+      不需要绑定端口，也不依赖任何外部服务。
+    -->
+    <PackageVersion Include="Microsoft.AspNetCore.TestHost" Version="10.0.0" />
   </ItemGroup>
 
 </Project>

@@ -95,6 +95,7 @@ PulseBot 是一个 C# 版、事件驱动的聊天机器人框架。基于 **.NET
 dotnet build                     # 必须通过才算完成
 dotnet test                      # 全量测试
 dotnet test --filter "Category=Unit"  # 快速单元测试
+dotnet test --filter "Category=Integration"  # 后台 API 集成测试
 dotnet run --project src/PulseBot.Cli   # 宿主；后台管理随它一同启动
 docker compose -f docker/docker-compose.yml up -d
 cd src/PulseBot.Admin.Web && npm run dev
@@ -161,18 +162,18 @@ dotnet format                    # 提交前格式化
 
 ## 后台管理
 - `PulseBot.Admin.Api` 由 `PulseBot.Cli` 同进程挂载（两者共用同一个 DI 容器），通过 `IManagementService` 调用核心。
+- REST 接口使用 MVC 控制器（`ControllerBase` + `[ApiController]`），在类库中通过 `AddApplicationPart` 显式注册；错误响应统一为 `ApiError`。
 - 实时推送使用 SignalR，前端通过 WebSocket 接收日志、事件、状态。
 - 轻量级实时流可使用 `TypedResults.ServerSentEvents`。
 - 配置修改写入数据库，通过 Redis Pub/Sub 通知核心热重载。
 - 所有敏感操作记录到 `AuditLogs`，不可篡改。
 - 认证：JWT + Refresh Token；授权：RBAC，接口用 `[Authorize(Policy = "...")]`。
-- Minimal APIs 优先使用内置验证支持，统一错误响应。
 - EF Core 10 仅支持 .NET 10，使用原生 JSON 类型与 `SqlVector<float>` 时需确认数据库版本。
 
 ## 测试
 - 使用 xUnit + Moq + Testcontainers。
 - 单元测试覆盖 Core 的事件分发、插件加载、权限规则。
-- 集成测试覆盖适配器与后台 API。
+- 集成测试覆盖适配器与后台 API；后台 API 使用 `Microsoft.AspNetCore.TestHost`（进程内 TestServer + 临时 SQLite），标注 `[Trait("Category", "Integration")]`。
 - 新增插件必须包含对应测试项目。
 - 提交前必须 `dotnet test` 全部通过。
 

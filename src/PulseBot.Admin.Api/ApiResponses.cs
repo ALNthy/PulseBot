@@ -2,6 +2,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
 using PulseBot.Admin.Infrastructure.Auth;
 using PulseBot.Admin.Shared.Accounts;
 
@@ -18,8 +19,13 @@ internal static class ApiResponses
     /// <param name="statusCode">HTTP 状态码。</param>
     /// <param name="code">机器可读错误码，取值见 <see cref="ApiErrorCodes"/>。</param>
     /// <param name="message">面向调用方的说明；不得携带堆栈或内部类型名。</param>
-    public static IResult Failure(int statusCode, string code, string message)
-        => Results.Json(new ApiError(code, message), statusCode: statusCode);
+    /// <remarks>
+    /// 用 <see cref="JsonResult"/> 而不是 <see cref="ObjectResult"/>：后者会参与内容协商，
+    /// 当调用方的 <c>Accept</c> 不含 JSON 时会得到 406——错误响应必须始终可解析，
+    /// 这与迁移前 Minimal API 的 <c>Results.Json</c> 行为一致。
+    /// </remarks>
+    public static IActionResult Failure(int statusCode, string code, string message)
+        => new JsonResult(new ApiError(code, message)) { StatusCode = statusCode };
 
     /// <summary>从访问令牌的声明还原操作者身份。</summary>
     /// <param name="http">当前请求。</param>

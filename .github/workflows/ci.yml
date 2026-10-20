@@ -1,0 +1,52 @@
+name: CI
+
+# 每次推送到 main 与每个 PR 都跑；也支持在 Actions 页面手动触发。
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# 只读仓库内容：CI 不需要写权限。
+permissions:
+  contents: read
+
+jobs:
+  build-test:
+    name: Build, test & format
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          # 跟随 global.json 的 10.0.1xx（rollForward: latestFeature）。
+          dotnet-version: 10.0.x
+
+      # 缓存 NuGet 包：键只由包版本清单决定，源码改动不会导致缓存失效。
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-${{ hashFiles('Directory.Packages.props', '**/*.csproj') }}
+          restore-keys: |
+            ${{ runner.os }}-nuget-
+
+      - name: Restore
+        run: dotnet restore PulseBot.slnx
+
+      # 用 Release 构建：与发布产物一致，也能暴露只在优化下出现的问题。
+      - name: Build
+        run: dotnet build PulseBot.slnx --no-restore --configuration Release
+
+      # 包含单元测试与后台 API 集成测试；后者用 TestServer + 临时 SQLite，
+      # 不需要数据库容器或任何外部服务。
+      - name: Test
+        run: dotnet test PulseBot.slnx --no-build --configuration Release --verbosity normal
+
+      # 格式检查与本地 `dotnet format` 使用同一套规则；有差异即失败。
+      - name: Verify formatting
+        run: dotnet format PulseBot.slnx --verify-no-changes --no-restore

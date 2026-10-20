@@ -1,12 +1,12 @@
-using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Routing;
+using Microsoft.AspNetCore.Mvc;
 using PulseBot.Admin.Infrastructure.Accounts;
 using PulseBot.Admin.Shared.Accounts;
 
-namespace PulseBot.Admin.Api.Endpoints;
+namespace PulseBot.Admin.Api.Controllers;
 
-/// <summary>账号管理端点：列表、创建、改自己密码、重置他人密码、启停、强制下线。</summary>
+/// <summary>账号管理控制器：列表、创建、改自己密码、重置他人密码、启停、强制下线。</summary>
 /// <remarks>
 /// <para>
 /// <b>操作者身份取自访问令牌的声明</b>，而不是请求体里的参数——否则调用方可以伪造成别人，
@@ -19,156 +19,162 @@ namespace PulseBot.Admin.Api.Endpoints;
 /// 不重复实现规则——两处各写一遍，早晚会漂移出「某个入口绕过了不变量」。
 /// </para>
 /// </remarks>
-internal static class AccountEndpoints
+[ApiController]
+[Authorize(Policy = AdminPolicies.Admin)]
+[Route(AdminApiEndpointRouteBuilderExtensions.RoutePrefix + "/accounts")]
+public sealed class AccountController : ControllerBase
 {
-    /// <summary>把账号端点挂到分组上。</summary>
-    /// <param name="group">后台 API 分组（前缀 <see cref="AdminApiEndpointRouteBuilderExtensions.RoutePrefix"/>）。</param>
-    public static void Map(RouteGroupBuilder group)
+    /// <summary>账号服务，承载全部业务规则与审计。</summary>
+    private readonly IAccountService _accounts;
+
+    /// <summary>构造函数注入账号服务。</summary>
+    /// <param name="accounts">账号服务。</param>
+    public AccountController(IAccountService accounts)
     {
-        group.MapGet("/accounts", ListAsync)
-            .WithSummary("列出全部后台账号")
-            .RequireAuthorization(AdminPolicies.Admin);
-
-        group.MapPost("/accounts", CreateAsync)
-            .WithSummary("创建后台账号")
-            .RequireAuthorization(AdminPolicies.Admin);
-
-        // 字面量段 "me" 的路由优先级高于参数段，且 {id:int} 本身也匹配不上 "me"，
-        // 因此这条不会被下一条抢走；放在前面只是为了让「自己」与「他人」在读代码时更容易分辨。
-        group.MapPut("/accounts/me/password", ChangeOwnPasswordAsync)
-            .WithSummary("修改自己的密码（需提供当前密码），并使自己的全部刷新令牌失效")
-            .RequireAuthorization(AdminPolicies.Admin);
-
-        group.MapPut("/accounts/{id:int}/password", ResetPasswordAsync)
-            .WithSummary("重置指定账号的密码（无需旧密码），并使其全部刷新令牌失效")
-            .RequireAuthorization(AdminPolicies.Admin);
-
-        group.MapPut("/accounts/{id:int}/state", SetStateAsync)
-            .WithSummary("启用或停用指定账号；停用后该账号无法登录且无法刷新令牌")
-            .RequireAuthorization(AdminPolicies.Admin);
-
-        group.MapPost("/accounts/{id:int}/revoke-sessions", RevokeSessionsAsync)
-            .WithSummary("强制下线：撤销指定账号的全部刷新令牌")
-            .RequireAuthorization(AdminPolicies.Admin);
+        ArgumentNullException.ThrowIfNull(accounts);
+        _accounts = accounts;
     }
 
-    private static async Task<IResult> ListAsync(
-        IAccountService accounts,
-        CancellationToken cancellationToken)
+    /// <summary>列出全部后台账号。</summary>
+    /// <param name="cancellationToken">请求取消令牌。</param>
+    /// <returns>账号列表。</returns>
+    [HttpGet]
+    public async Task<IActionResult> ListAsync(CancellationToken cancellationToken)
     {
-        IReadOnlyList<AccountInfo> list = await accounts
+        IReadOnlyList<AccountInfo> list = await _accounts
             .ListAsync(cancellationToken)
             .ConfigureAwait(false);
 
-        return Results.Ok(list);
+        return Ok(list);
     }
 
-    private static async Task<IResult> CreateAsync(
-        CreateAccountRequest request,
-        HttpContext http,
-        IAccountService accounts,
+    /// <summary>创建后台账号。</summary>
+    /// <param name="request">用户名与初始密码。</param>
+    /// <param name="cancellationToken">请求取消令牌。</param>
+    /// <returns>创建成功的账号；用户名被占用为 409。</returns>
+    [HttpPost]
+    public async Task<IActionResult> CreateAsync(
+        [FromBody] CreateAccountRequest request,
         CancellationToken cancellationToken)
     {
-        if (!ApiResponses.TryGetActor(http, out AccountActor? actor))
+        if (!ApiResponses.TryGetActor(HttpContext, out AccountActor? actor))
         {
             return ApiResponses.Failure(StatusCodes.Status401Unauthorized, ApiErrorCodes.InvalidToken, "访问令牌缺少身份信息，请重新登录。");
         }
 
         if (request is null || string.IsNullOrWhiteSpace(request.UserName) || string.IsNullOrEmpty(request.Password))
         {
-            return Results.BadRequest(new ApiError(ApiErrorCodes.InvalidRequest, "用户名与初始密码均不能为空。"));
+            return ApiResponses.Failure(StatusCodes.Status400BadRequest, ApiErrorCodes.InvalidRequest, "用户名与初始密码均不能为空。");
         }
 
-        AccountOperationResult result = await accounts
+        AccountOperationResult result = await _accounts
             .CreateAsync(actor, request.UserName, request.Password, cancellationToken)
             .ConfigureAwait(false);
 
         return ToResponse(result);
     }
 
-    private static async Task<IResult> ChangeOwnPasswordAsync(
-        ChangePasswordRequest request,
-        HttpContext http,
-        IAccountService accounts,
+    /// <summary>修改自己的密码（需提供当前密码），并使自己的全部刷新令牌失效。</summary>
+    /// <param name="request">当前密码与新密码。</param>
+    /// <param name="cancellationToken">请求取消令牌。</param>
+    /// <returns>更新后的账号信息；当前密码错误为 401。</returns>
+    /// <remarks>
+    /// 字面量段 "me" 的路由优先级高于参数段，且 <c>{id:int}</c> 本身也匹配不上 "me"，
+    /// 因此这条不会被「重置他人密码」那条抢走。
+    /// </remarks>
+    [HttpPut("me/password")]
+    public async Task<IActionResult> ChangeOwnPasswordAsync(
+        [FromBody] ChangePasswordRequest request,
         CancellationToken cancellationToken)
     {
-        if (!ApiResponses.TryGetActor(http, out AccountActor? actor))
+        if (!ApiResponses.TryGetActor(HttpContext, out AccountActor? actor))
         {
             return ApiResponses.Failure(StatusCodes.Status401Unauthorized, ApiErrorCodes.InvalidToken, "访问令牌缺少身份信息，请重新登录。");
         }
 
         if (request is null || string.IsNullOrEmpty(request.CurrentPassword) || string.IsNullOrEmpty(request.NewPassword))
         {
-            return Results.BadRequest(new ApiError(ApiErrorCodes.InvalidRequest, "当前密码与新密码均不能为空。"));
+            return ApiResponses.Failure(StatusCodes.Status400BadRequest, ApiErrorCodes.InvalidRequest, "当前密码与新密码均不能为空。");
         }
 
-        AccountOperationResult result = await accounts
+        AccountOperationResult result = await _accounts
             .ChangeOwnPasswordAsync(actor, request.CurrentPassword, request.NewPassword, cancellationToken)
             .ConfigureAwait(false);
 
         return ToResponse(result);
     }
 
-    private static async Task<IResult> ResetPasswordAsync(
-        int id,
-        ResetPasswordRequest request,
-        HttpContext http,
-        IAccountService accounts,
+    /// <summary>重置指定账号的密码（无需旧密码），并使其全部刷新令牌失效。</summary>
+    /// <param name="id">目标账号主键。</param>
+    /// <param name="request">新密码。</param>
+    /// <param name="cancellationToken">请求取消令牌。</param>
+    /// <returns>更新后的账号信息；账号不存在为 404。</returns>
+    [HttpPut("{id:int}/password")]
+    public async Task<IActionResult> ResetPasswordAsync(
+        [FromRoute] int id,
+        [FromBody] ResetPasswordRequest request,
         CancellationToken cancellationToken)
     {
-        if (!ApiResponses.TryGetActor(http, out AccountActor? actor))
+        if (!ApiResponses.TryGetActor(HttpContext, out AccountActor? actor))
         {
             return ApiResponses.Failure(StatusCodes.Status401Unauthorized, ApiErrorCodes.InvalidToken, "访问令牌缺少身份信息，请重新登录。");
         }
 
         if (request is null || string.IsNullOrEmpty(request.NewPassword))
         {
-            return Results.BadRequest(new ApiError(ApiErrorCodes.InvalidRequest, "新密码不能为空。"));
+            return ApiResponses.Failure(StatusCodes.Status400BadRequest, ApiErrorCodes.InvalidRequest, "新密码不能为空。");
         }
 
-        AccountOperationResult result = await accounts
+        AccountOperationResult result = await _accounts
             .ResetPasswordAsync(actor, id, request.NewPassword, cancellationToken)
             .ConfigureAwait(false);
 
         return ToResponse(result);
     }
 
-    private static async Task<IResult> SetStateAsync(
-        int id,
-        SetAccountStateRequest request,
-        HttpContext http,
-        IAccountService accounts,
+    /// <summary>启用或停用指定账号；停用后该账号无法登录且无法刷新令牌。</summary>
+    /// <param name="id">目标账号主键。</param>
+    /// <param name="request">目标状态。</param>
+    /// <param name="cancellationToken">请求取消令牌。</param>
+    /// <returns>更新后的账号信息；账号不存在为 404；最后一个启用账号不可停用为 409。</returns>
+    [HttpPut("{id:int}/state")]
+    public async Task<IActionResult> SetStateAsync(
+        [FromRoute] int id,
+        [FromBody] SetAccountStateRequest request,
         CancellationToken cancellationToken)
     {
-        if (!ApiResponses.TryGetActor(http, out AccountActor? actor))
+        if (!ApiResponses.TryGetActor(HttpContext, out AccountActor? actor))
         {
             return ApiResponses.Failure(StatusCodes.Status401Unauthorized, ApiErrorCodes.InvalidToken, "访问令牌缺少身份信息，请重新登录。");
         }
 
         if (request is null)
         {
-            return Results.BadRequest(new ApiError(ApiErrorCodes.InvalidRequest, "缺少 Enabled 字段。"));
+            return ApiResponses.Failure(StatusCodes.Status400BadRequest, ApiErrorCodes.InvalidRequest, "缺少 Enabled 字段。");
         }
 
-        AccountOperationResult result = await accounts
+        AccountOperationResult result = await _accounts
             .SetEnabledAsync(actor, id, request.Enabled, cancellationToken)
             .ConfigureAwait(false);
 
         return ToResponse(result);
     }
 
-    private static async Task<IResult> RevokeSessionsAsync(
-        int id,
-        HttpContext http,
-        IAccountService accounts,
+    /// <summary>强制下线：撤销指定账号的全部刷新令牌。</summary>
+    /// <param name="id">目标账号主键。</param>
+    /// <param name="cancellationToken">请求取消令牌。</param>
+    /// <returns>更新后的账号信息；账号不存在为 404。</returns>
+    [HttpPost("{id:int}/revoke-sessions")]
+    public async Task<IActionResult> RevokeSessionsAsync(
+        [FromRoute] int id,
         CancellationToken cancellationToken)
     {
-        if (!ApiResponses.TryGetActor(http, out AccountActor? actor))
+        if (!ApiResponses.TryGetActor(HttpContext, out AccountActor? actor))
         {
             return ApiResponses.Failure(StatusCodes.Status401Unauthorized, ApiErrorCodes.InvalidToken, "访问令牌缺少身份信息，请重新登录。");
         }
 
-        AccountOperationResult result = await accounts
+        AccountOperationResult result = await _accounts
             .RevokeSessionsAsync(actor, id, cancellationToken)
             .ConfigureAwait(false);
 
@@ -181,13 +187,13 @@ internal static class AccountEndpoints
     /// （用户名被占用、只剩最后一个启用账号）是 409。前端据此决定
     /// 「刷新列表」还是「提示用户改个名字」。
     /// </remarks>
-    private static IResult ToResponse(AccountOperationResult result)
+    private static IActionResult ToResponse(AccountOperationResult result)
     {
         ArgumentNullException.ThrowIfNull(result);
 
         return result.Status switch
         {
-            AccountOperationStatus.Success => Results.Ok(result.Account),
+            AccountOperationStatus.Success => new OkObjectResult(result.Account),
 
             AccountOperationStatus.NotFound => ApiResponses.Failure(
                 StatusCodes.Status404NotFound, ApiErrorCodes.AccountNotFound, "账号不存在。"),
@@ -216,5 +222,4 @@ internal static class AccountEndpoints
                 nameof(result), result.Status, "未知的账号操作结果：接口层没有为它定义响应。"),
         };
     }
-
 }

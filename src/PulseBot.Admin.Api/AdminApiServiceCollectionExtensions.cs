@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -28,6 +29,21 @@ public static class AdminApiServiceCollectionExtensions
     public static IServiceCollection AddAdminApi(this IServiceCollection services)
     {
         ArgumentNullException.ThrowIfNull(services);
+
+        // 后台 REST 端点以 MVC 控制器形态提供（见 Controllers/ 目录）。
+        // Admin.Api 是类库，而宿主的入口程序集是 PulseBot.Cli——MVC 默认只扫描入口程序集，
+        // 因此必须用 AddApplicationPart 显式登记本程序集，否则控制器静默不生效（全部 404）。
+        services.AddControllers()
+            .AddApplicationPart(typeof(AdminApiServiceCollectionExtensions).Assembly)
+            .ConfigureApiBehaviorOptions(static options =>
+            {
+                // [ApiController] 默认用 ProblemDetails 表达模型绑定错误。后台对外只暴露
+                // ApiError 一种错误形状，这里统一过去，调用方不必按端点分辨两种错误格式。
+                options.InvalidModelStateResponseFactory = static _ =>
+                    new BadRequestObjectResult(new ApiError(
+                        ApiErrorCodes.InvalidRequest,
+                        "请求体格式不正确或缺少必需字段。"));
+            });
 
         services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJwtBearer();
 

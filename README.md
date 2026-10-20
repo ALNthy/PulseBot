@@ -26,11 +26,12 @@
 | `PulseBot.Adapter.Console` | ✅ 已实现 — 把标准输入输出当作聊天平台，用于本地联调与新适配器的参考实现 |
 | `PulseBot.Plugins.Echo` | ✅ 已实现 — 示例插件（单轮命令 + 多轮对话两种形态） |
 | `PulseBot.Adapter.OneBot` | ✅ 已实现 — OneBot 12 反向 WebSocket（消息、通知、请求事件） |
+| `PulseBot.Adapter.Email` | ✅ 已实现 — 自有 IMAP/SMTP 邮箱接入（纯文本、私聊、发件人白名单；默认关闭） |
 | `PulseBot.Admin.*` | ✅ 已实现 — 同进程后台：JWT 认证、账号与密码管理、登录限流、状态查询、插件启停、权限名单热更新、审计落库、SignalR 实时推送；Vue 前端待做 |
 
-测试：350 个（Core 193 + Console 12 + OneBot 29 + Admin 116），`dotnet test` 全绿。
+测试：394 个（Core 193 + Console 12 + OneBot 29 + Email 26 + Admin 134，其中 18 个是后台 API 集成测试），`dotnet test` 全绿。
 
-> 也就是说，**开箱即可在控制台里跑通完整闭环**（发消息 → 事件管道 → 命令 → 回话）；接入真实平台用 `PulseBot.Adapter.OneBot`，它已实现 OneBot 12 反向 WebSocket 与消息、通知、请求三类事件的翻译。
+> 也就是说，**开箱即可在控制台里跑通完整闭环**（发消息 → 事件管道 → 命令 → 回话）；接入真实平台用 `PulseBot.Adapter.OneBot`，它已实现 OneBot 12 反向 WebSocket 与消息、通知、请求三类事件的翻译；需要邮箱通道时用 `PulseBot.Adapter.Email`（默认关闭，配置后启用）。
 
 ## 环境要求
 
@@ -426,6 +427,26 @@ curl -X PUT http://localhost:5187/admin/api/access-policy/user-blacklist \
 | `AccessToken` | 空 | 访问令牌；非空时要求实现端在握手时携带 `Authorization: Bearer <token>`，不匹配直接拒绝连接 |
 | `ActionTimeout` | `"00:00:10"` | 等待实现端返回动作响应的超时，超过即视为本次发送失败 |
 
+**`Adapters:Email`** —— 邮件适配器（默认关闭）：
+
+| 键 | 默认值 | 说明 |
+| --- | --- | --- |
+| `Enabled` | `false` | 是否启用；关闭时不连接邮箱，发送返回 `NotConnected` |
+| `ImapHost` / `ImapPort` | 空 / `993` | 收件服务器与端口 |
+| `ImapSecurity` | `"SslOnConnect"` | `Auto` / `None` / `SslOnConnect` / `StartTls` |
+| `Mailbox` | `"INBOX"` | 监听的文件夹；子文件夹需使用服务器的路径分隔符 |
+| `IdleTimeout` | `"00:00:30"` | IDLE 到期后重新检查未读邮件的间隔，决定命令响应延迟 |
+| `ReconnectDelay` | `"00:00:15"` | 连接断开后的重连间隔 |
+| `SmtpHost` / `SmtpPort` | 空 / `587` | 发件服务器与端口 |
+| `SmtpSecurity` | `"StartTls"` | 同 `ImapSecurity` |
+| `UserName` / `Password` | 空 | IMAP 与 SMTP 共用的登录凭据；密码建议用环境变量 `Adapters__Email__Password` 注入 |
+| `FromAddress` / `FromDisplayName` | 空 / `"PulseBot"` | 发件地址与展示名；`FromAddress` 同时用于忽略自发邮件 |
+| `Subject` | `"PulseBot"` | 主动发送时的主题；回复自动加 `Re:` 前缀 |
+| `AllowedSenders` | `[]` | 允许交互的发件人地址（不区分大小写） |
+| `AllowedDomains` | `[]` | 允许交互的发件人域名；与 `AllowedSenders` 取并集，二者都为空时适配器拒绝启动 |
+
+> 邮件适配器首版只做纯文本私聊闭环：不做附件、HTML 富文本与邮件列表的会话建模，HTML-only 邮件会剥标签转纯文本。`From` 头可以伪造，因此适配器默认拒绝白名单之外的邮件；**不要把邮箱地址直接加进 `Permissions:SuperAdmins`**，除非你接受发件人身份不可信的风险。自动回复、退信与邮件列表流量（`Auto-Submitted`、`Precedence`、`List-Id`）会被丢弃，以避免自动互发循环。
+
 **`Admin`** —— 后台管理（与机器人同进程）：
 
 | 键 | 默认值 | 说明 |
@@ -451,6 +472,7 @@ src/
   PulseBot.Core/                 内核：事件、分发、命令、权限、插件、会话、调度、消息段
   PulseBot.Cli/                  宿主入口：DI 配置、加载适配器与插件
   PulseBot.Adapter.Console/      控制台适配器（参考实现）
+  PulseBot.Adapter.Email/        邮件适配器（IMAP 收件、SMTP 发件，纯文本首版）
   PulseBot.Adapter.OneBot/       OneBot 适配器，当前实现了 12 版（反向 WebSocket）
   PulseBot.Plugins.Echo/         示例插件
   PulseBot.Admin.Shared/         后台共享契约：配置、DTO、枚举（零依赖）
@@ -459,6 +481,7 @@ src/
 tests/
   PulseBot.Core.Tests/
   PulseBot.Adapter.Console.Tests/
+  PulseBot.Adapter.Email.Tests/
   PulseBot.Adapter.OneBot.Tests/
   PulseBot.Admin.Tests/
 ```
@@ -694,6 +717,7 @@ builder.Services.AddEventHandler<MessageEvent, ChatLogHandler>();
 dotnet build PulseBot.slnx                     # 构建（可空警告是错误级）
 dotnet test PulseBot.slnx                      # 全量测试
 dotnet test PulseBot.slnx --filter "Category=Unit"
+dotnet test PulseBot.slnx --filter "Category=Integration"   # 后台 API 集成测试
 dotnet run --project src/PulseBot.Cli          # 跑起来
 dotnet format PulseBot.slnx                    # 提交前格式化
 ```
@@ -731,7 +755,7 @@ Core 的地基已完整，两个里程碑已经交付：**接入真实平台**�
 - **持久化与多实例** — 会话、调度执行历史与分布式锁目前均为内存实现（单机可用）。权限名单由后台负责持久化（落 SQLite，启动时装进内存快照、改动立即生效），但多实例之间仍不共享；跨实例通知目前也是进程内的（后台与内核同进程），尚未引入 Redis。
 - **后台管理的后续** — Vue 前端（`PulseBot.Admin.Web`）待做——后端的账号、名单、插件启停与实时推送四条链路都已就绪并端到端验证，唯独还没有可用的界面；后台数据库的 EF 迁移待补（当前用 `EnsureCreated` 建库，新增表后旧库需要删除重建，仅适合开发期）；通用配置热重载未纳入（端口、监听地址这类结构性配置改了也无法生效，见「配置项一览」的说明）。
 - **可观测性** — 目前只有结构化日志：指标（Prometheus）与分布式追踪（OpenTelemetry）均未接入；健康检查只有一个手写的 `/health`（恒返回 healthy），还没有 `/ready`，也未接入 .NET 的健康检查框架——编排系统无法区分「进程活着」与「依赖就绪」。
-- **测试基础设施** — 现有 4 个测试项目（350 个测试）全部是单元与管道测试，跑得快、无外部依赖；但真实数据库与 Redis 路径没有集成测试覆盖，Testcontainers 尚未引入。
+- **测试基础设施** — 现有 5 个测试项目（394 个测试）：Core、三个适配器（Console/OneBot/Email）与 Admin 服务层是单元/管道测试，跑得快、无外部依赖；后台 API 另有 18 个进程内集成测试（`TestServer` + 临时 SQLite），覆盖路由、JWT 认证、模型绑定与统一错误形状。Redis 与多实例路径仍无集成测试覆盖，Testcontainers 尚未引入；CI 已由 GitHub Actions 在 push/PR 时执行构建、全量测试与格式检查。
 
 优先级建议：**后台前端**投入产出比最高（后端已就绪，只差界面，且不依赖任何架构决策）；
 其次是**可观测性与健康检查**（把单机宿主变成可部署服务的最小前提）；功能广度按上面列出的顺序推进。
