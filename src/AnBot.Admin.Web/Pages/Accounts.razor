@@ -1,0 +1,333 @@
+@page "/accounts"
+@attribute [Authorize]
+@inject AdminApiClient Api
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+
+<PageHeader Title="账号" Subtitle="管理后台登录账号与密码。" />
+
+<MudGrid>
+    <MudItem xs="12" md="6">
+        <MudPaper Class="pa-4">
+            <MudText Typo="Typo.h6" Class="mb-3">创建账号</MudText>
+
+            <MudTextField @bind-Value="_newUserName"
+                          Label="用户名"
+                          Variant="Variant.Outlined"
+                          Margin="Margin.Dense" />
+
+            <MudTextField @bind-Value="_newPassword"
+                          Label="初始密码（至少 8 位）"
+                          InputType="InputType.Password"
+                          Variant="Variant.Outlined"
+                          Margin="Margin.Dense"
+                          Class="mt-3" />
+
+            <MudButton Class="mt-3"
+                       Variant="Variant.Filled"
+                       Color="Color.Primary"
+                       OnClick="CreateAsync"
+                       Disabled="_busy">
+                创建
+            </MudButton>
+        </MudPaper>
+    </MudItem>
+
+    <MudItem xs="12" md="6">
+        <MudPaper Class="pa-4">
+            <MudText Typo="Typo.h6" Class="mb-3">修改自己的密码</MudText>
+
+            <MudTextField @bind-Value="_currentPassword"
+                          Label="当前密码"
+                          InputType="InputType.Password"
+                          Variant="Variant.Outlined"
+                          Margin="Margin.Dense" />
+
+            <MudTextField @bind-Value="_ownNewPassword"
+                          Label="新密码"
+                          InputType="InputType.Password"
+                          Variant="Variant.Outlined"
+                          Margin="Margin.Dense"
+                          Class="mt-3" />
+
+            <MudButton Class="mt-3"
+                       Variant="Variant.Filled"
+                       Color="Color.Primary"
+                       OnClick="ChangeOwnPasswordAsync"
+                       Disabled="_busy">
+                修改
+            </MudButton>
+        </MudPaper>
+    </MudItem>
+</MudGrid>
+
+@if (_resetTarget is not null)
+{
+    <MudPaper Class="pa-4 mt-4">
+        <MudText Typo="Typo.h6" Class="mb-3">重置 @_resetTarget.UserName 的密码</MudText>
+
+        <MudTextField @bind-Value="_resetPassword"
+                      Label="新密码"
+                      InputType="InputType.Password"
+                      Variant="Variant.Outlined"
+                      Margin="Margin.Dense" />
+
+        <MudButton Class="mt-3"
+                   Variant="Variant.Filled"
+                   Color="Color.Warning"
+                   OnClick="ResetPasswordAsync"
+                   Disabled="_busy">
+            确认重置
+        </MudButton>
+
+        <MudButton Class="mt-3 ml-2"
+                   Variant="Variant.Text"
+                   OnClick="@(() => _resetTarget = null)">
+            取消
+        </MudButton>
+    </MudPaper>
+}
+
+<MudTable Items="@_accounts" Dense="true" Hover="true" Loading="_loading" Class="mt-6 table-scroll">
+    <HeaderContent>
+        <MudTh>ID</MudTh>
+        <MudTh>用户名</MudTh>
+        <MudTh>角色</MudTh>
+        <MudTh>状态</MudTh>
+        <MudTh>创建时间</MudTh>
+        <MudTh>最后登录</MudTh>
+        <MudTh>操作</MudTh>
+    </HeaderContent>
+    <RowTemplate>
+        <MudTd>@context.Id</MudTd>
+        <MudTd>@context.UserName</MudTd>
+        <MudTd>@context.Role</MudTd>
+        <MudTd>
+            @if (context.IsEnabled)
+            {
+                <MudChip T="string" Size="Size.Small" Color="Color.Success">启用</MudChip>
+            }
+            else
+            {
+                <MudChip T="string" Size="Size.Small" Color="Color.Default">停用</MudChip>
+            }
+        </MudTd>
+        <MudTd>@context.CreatedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm")</MudTd>
+        <MudTd>@(context.LastLoginAt?.ToLocalTime().ToString("yyyy-MM-dd HH:mm") ?? "从未")</MudTd>
+        <MudTd>
+            <MudButton Size="Size.Small" Disabled="_busy" OnClick="@(() => ToggleAsync(context))">
+                @(context.IsEnabled ? "停用" : "启用")
+            </MudButton>
+            <MudButton Size="Size.Small" Disabled="_busy" OnClick="@(() => _resetTarget = context)">重置密码</MudButton>
+            <MudButton Size="Size.Small" Color="Color.Warning" Disabled="_busy" OnClick="@(() => RevokeAsync(context))">强制下线</MudButton>
+        </MudTd>
+    </RowTemplate>
+    <NoRecordsContent>
+        <MudText>没有账号。</MudText>
+    </NoRecordsContent>
+</MudTable>
+
+<MudButton Class="mt-4"
+           Variant="Variant.Outlined"
+           StartIcon="@Icons.Material.Filled.Refresh"
+           OnClick="LoadAsync"
+           Disabled="_loading">
+    刷新
+</MudButton>
+
+@code {
+    private IReadOnlyList<AccountInfo> _accounts = [];
+    private string _newUserName = string.Empty;
+    private string _newPassword = string.Empty;
+    private string _currentPassword = string.Empty;
+    private string _ownNewPassword = string.Empty;
+    private AccountInfo? _resetTarget;
+    private string _resetPassword = string.Empty;
+    private bool _loading;
+    private bool _busy;
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+
+        try
+        {
+            _accounts = await Api.ListAccountsAsync();
+        }
+        catch (ApiException ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+        catch (HttpRequestException)
+        {
+            Snackbar.Add("无法连接后台服务。", Severity.Error);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task CreateAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_newUserName))
+        {
+            Snackbar.Add("请输入用户名。", Severity.Warning);
+            return;
+        }
+
+        if (_newPassword.Length < AccountRules.MinimumPasswordLength)
+        {
+            Snackbar.Add($"密码长度至少为 {AccountRules.MinimumPasswordLength} 个字符。", Severity.Warning);
+            return;
+        }
+
+        await RunAsync(async () =>
+        {
+            AccountInfo account = await Api.CreateAccountAsync(_newUserName, _newPassword);
+            Snackbar.Add($"已创建账号 {account.UserName}。", Severity.Success);
+            _newUserName = string.Empty;
+            _newPassword = string.Empty;
+            await LoadAsync();
+        });
+    }
+
+    private async Task ChangeOwnPasswordAsync()
+    {
+        if (string.IsNullOrEmpty(_currentPassword))
+        {
+            Snackbar.Add("请输入当前密码。", Severity.Warning);
+            return;
+        }
+
+        if (_ownNewPassword.Length < AccountRules.MinimumPasswordLength)
+        {
+            Snackbar.Add($"新密码长度至少为 {AccountRules.MinimumPasswordLength} 个字符。", Severity.Warning);
+            return;
+        }
+
+        await RunAsync(async () =>
+        {
+            await Api.ChangeOwnPasswordAsync(_currentPassword, _ownNewPassword);
+            Snackbar.Add("密码已修改。", Severity.Success);
+            _currentPassword = string.Empty;
+            _ownNewPassword = string.Empty;
+        });
+    }
+
+    private async Task ToggleAsync(AccountInfo account)
+    {
+        // 停用会让对方立即失去登录能力；启用是安全操作，不需要确认。
+        if (account.IsEnabled)
+        {
+            bool confirmed = await ConfirmAsync(
+                "停用账号",
+                $"确定停用 {account.UserName}？该账号将无法登录，也无法刷新令牌。",
+                "停用");
+
+            if (!confirmed)
+            {
+                return;
+            }
+        }
+
+        await RunAsync(async () =>
+        {
+            AccountInfo updated = await Api.SetAccountStateAsync(account.Id, !account.IsEnabled);
+            Snackbar.Add(
+                $"账号 {updated.UserName} 已{(updated.IsEnabled ? "启用" : "停用")}。",
+                Severity.Success);
+            await LoadAsync();
+        });
+    }
+
+    private async Task RevokeAsync(AccountInfo account)
+    {
+        bool confirmed = await ConfirmAsync(
+            "强制下线",
+            $"撤销 {account.UserName} 的全部刷新令牌？该账号已签发的访问令牌仍会在到期前有效。",
+            "强制下线");
+
+        if (!confirmed)
+        {
+            return;
+        }
+
+        await RunAsync(async () =>
+        {
+            await Api.RevokeSessionsAsync(account.Id);
+            Snackbar.Add($"已撤销 {account.UserName} 的全部刷新令牌。", Severity.Success);
+        });
+    }
+
+    private async Task ResetPasswordAsync()
+    {
+        if (_resetTarget is null)
+        {
+            return;
+        }
+
+        if (_resetPassword.Length < AccountRules.MinimumPasswordLength)
+        {
+            Snackbar.Add($"新密码长度至少为 {AccountRules.MinimumPasswordLength} 个字符。", Severity.Warning);
+            return;
+        }
+
+        bool confirmed = await ConfirmAsync(
+            "重置密码",
+            $"确定重置 {_resetTarget.UserName} 的密码？该账号的全部刷新令牌会立即失效。",
+            "重置");
+
+        if (!confirmed)
+        {
+            return;
+        }
+
+        await RunAsync(async () =>
+        {
+            await Api.ResetPasswordAsync(_resetTarget.Id, _resetPassword);
+            Snackbar.Add($"已重置 {_resetTarget.UserName} 的密码。", Severity.Success);
+            _resetTarget = null;
+            _resetPassword = string.Empty;
+        });
+    }
+
+    /// <summary>弹出通用确认对话框；用户确认时返回 true。</summary>
+    private async Task<bool> ConfirmAsync(string title, string message, string confirmText, Color color = Color.Error)
+    {
+        IDialogReference dialog = await DialogService.ShowAsync<ConfirmDialog>(title, new DialogParameters
+        {
+            [nameof(ConfirmDialog.Message)] = message,
+            [nameof(ConfirmDialog.ConfirmText)] = confirmText,
+            [nameof(ConfirmDialog.Color)] = color,
+        });
+
+        DialogResult? result = await dialog.Result;
+        return result is { Canceled: false };
+    }
+
+    /// <summary>统一处理忙碌状态与错误提示，避免每个操作各写一遍。</summary>
+    private async Task RunAsync(Func<Task> action)
+    {
+        _busy = true;
+
+        try
+        {
+            await action();
+        }
+        catch (ApiException ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+        catch (HttpRequestException)
+        {
+            Snackbar.Add("无法连接后台服务。", Severity.Error);
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}

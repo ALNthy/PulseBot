@@ -27,7 +27,8 @@
 | `AnBot.Plugins.Echo` | ✅ 已实现 — 示例插件（单轮命令 + 多轮对话两种形态） |
 | `AnBot.Adapter.OneBot` | ✅ 已实现 — OneBot 12 反向 WebSocket（消息、通知、请求事件） |
 | `AnBot.Adapter.Email` | ✅ 已实现 — 自有 IMAP/SMTP 邮箱接入（纯文本、私聊、发件人白名单；默认关闭） |
-| `AnBot.Admin.*` | ✅ 已实现 — 同进程后台：JWT 认证、账号与密码管理、登录限流、状态查询、插件启停、权限名单热更新、审计落库、SignalR 实时推送；Vue 前端待做 |
+| `AnBot.Admin.*` | ✅ 已实现 — 同进程后台：JWT 认证、账号与密码管理、登录限流、状态查询、插件启停、权限名单热更新、审计落库、SignalR 实时推送；管理界面为 Blazor WebAssembly + MudBlazor |
+| `AnBot.Admin.Web` | ✅ 已实现 — 登录、仪表盘、账号、插件、权限名单、审计日志与实时流 |
 
 测试：394 个（Core 193 + Console 12 + OneBot 29 + Email 26 + Admin 134，其中 18 个是后台 API 集成测试），`dotnet test` 全绿。
 
@@ -36,7 +37,7 @@
 ## 环境要求
 
 - [.NET 10 SDK](https://dotnet.microsoft.com/download)（目标框架 `net10.0`，语言版本 C# 14）
-- Node.js 仅在开发后台前端时需要（`AnBot.Admin.Web` 尚未创建）
+- 后台界面是 Blazor WebAssembly（`AnBot.Admin.Web`），构建需要 `dotnet workload install wasm-tools`；不需要 Node.js
 
 ```bash
 dotnet --version   # 应输出 10.x
@@ -52,7 +53,7 @@ cd AnBot
 dotnet run --project src/AnBot.Cli
 ```
 
-宿主同时会在 `http://localhost:5187` 挂载后台管理接口（JWT 认证、监控、插件与权限写操作、实时推送，见[后台管理](#后台管理)）；只想跑机器人，把配置里的 `Admin:Enabled` 设为 `false` 即可。
+宿主同时会在 `http://localhost:5387` 挂载后台管理接口（JWT 认证、监控、插件与权限写操作、实时推送，见[后台管理](#后台管理)）；只想跑机器人，把配置里的 `Admin:Enabled` 设为 `false` 即可。
 
 启动后会出现 `你> ` 提示符，直接输入即可：
 
@@ -80,7 +81,7 @@ dotnet run --project src/AnBot.Cli
 ## Docker 部署
 
 仓库自带 [Dockerfile](Dockerfile) 与 [docker/docker-compose.yml](docker/docker-compose.yml)。
-镜像以非 root 用户运行，后台管理（5187）与 OneBot 12 反向 WebSocket（6700）同进程暴露。
+镜像以非 root 用户运行，后台管理（5387）与 OneBot 12 反向 WebSocket（6700）同进程暴露。
 
 ### 1. 准备密钥
 
@@ -106,7 +107,7 @@ cp .env.example .env
 docker compose up -d --build
 ```
 
-- 后台管理：<http://localhost:5187>
+- 后台管理：<http://localhost:5387>
 - OneBot 12 反向 WebSocket：`ws://<宿主机地址>:6700/onebot/v12/`（由实现端主动连入）
 - 健康检查：容器每 30 秒请求一次 `/health`
 
@@ -133,7 +134,7 @@ docker compose up -d --build   # 升级：拉取源码后重建
 - compose 已把 `Admin__Url` 与 `Adapters__OneBot12__Host` 设为 `0.0.0.0`——
   容器内保持默认的 `localhost` 会导致端口映射无法访问。
 - 如果关闭后台（`Admin__Enabled=false`），`/health` 不再存在，请同步移除 compose 里的 `healthcheck`。
-- 对外暴露 5187 / 6700 前，请置于反向代理与 TLS 之后，并为 OneBot 握手设置访问令牌。
+- 对外暴露 5387 / 6700 前，请置于反向代理与 TLS 之后，并为 OneBot 握手设置访问令牌。
 
 ## 事件驱动原理
 
@@ -283,11 +284,21 @@ dotnet run --project src/AnBot.Cli
 
 后台与机器人**同进程**运行：宿主在提供机器人的同时挂载一组 HTTP 接口，两者共用同一个 DI 容器——因此后台看到的是真实运行中的适配器、插件与调度器，改动的也是内核正在用的那份权限与插件状态。它覆盖**可运维闭环**的三件事：
 
-- **看** —— 状态、适配器、插件、命令、定时任务、执行历史与审计记录的查询接口。
+- **看** —— 状态（含进程 CPU 与内存占用）、适配器、插件、命令、定时任务、执行历史与审计记录的查询接口。
 - **管** —— 账号与密码管理、插件启停、权限名单热更新（写入立即生效，重启保持）。
 - **推** —— SignalR 实时推送宿主日志、事件摘要与运行状态。
 
-Vue 前端尚未创建，接口直接用 `curl` 验证即可。
+管理界面位于 [`src/AnBot.Admin.Web`](src/AnBot.Admin.Web)（Blazor WebAssembly + MudBlazor），
+直接复用上表的 REST 接口与 SignalR：
+
+- **开发**：先启动宿主，再 `dotnet run --project src/AnBot.Admin.Web`，浏览器访问 <http://localhost:5242>。
+  前端通过 `appsettings.Development.json` 调用 5387 的 API，宿主已为这个开发源开启 CORS。
+  也可以直接运行一键脚本（`scripts/start-dev.cmd` 或 `scripts/start-dev.sh`），
+  它会启动两个服务、等待就绪并打开浏览器；按 Ctrl+C / 关闭窗口即可停止。
+- **生产**：`dotnet publish src/AnBot.Cli -c Release` 会把前端发布到宿主 `wwwroot`，
+  直接访问 <http://localhost:5387>（同源，无需 CORS）。
+
+首次登录使用 `appsettings.json` 里的引导账号（默认 `admin` / `anbot-dev`），登录后应立即修改密码。
 
 ### 启用
 
@@ -312,7 +323,7 @@ export Admin__Auth__SigningKey="<生成的随机串>"
 ### 登录
 
 ```bash
-curl -X POST http://localhost:5187/admin/api/auth/login \
+curl -X POST http://localhost:5387/admin/api/auth/login \
   -H "Content-Type: application/json" \
   -d '{"userName":"admin","password":"<BootstrapPassword>"}'
 ```
@@ -329,7 +340,7 @@ curl -X POST http://localhost:5187/admin/api/auth/login \
 | `POST` | `/admin/api/auth/login` | 无 | 换取令牌对 |
 | `POST` | `/admin/api/auth/refresh` | 无 | 用刷新令牌换取新令牌对（轮换） |
 | `POST` | `/admin/api/auth/logout` | 无 | 撤销刷新令牌，恒返回 204（幂等） |
-| `GET` | `/admin/api/status` | 需要 | 运行状态：启动时刻、运行时长、各子域计数 |
+| `GET` | `/admin/api/status` | 需要 | 运行状态：启动时刻、运行时长、各子域计数、进程 CPU/内存占用 |
 | `GET` | `/admin/api/adapters` | 需要 | 已注册的适配器 |
 | `GET` | `/admin/api/plugins` | 需要 | 全部插件（含已停用的）及其元数据、命令与启停状态 |
 | `GET` | `/admin/api/commands` | 需要 | 全部命令名（含别名）与所属插件 |
@@ -350,7 +361,7 @@ curl -X POST http://localhost:5187/admin/api/auth/login \
 认证端点之外的全部接口都要求 `admin` 角色：
 
 ```bash
-curl http://localhost:5187/admin/api/status -H "Authorization: Bearer <accessToken>"
+curl http://localhost:5387/admin/api/status -H "Authorization: Bearer <accessToken>"
 ```
 
 写操作的失败响应统一为 `{"code": "...", "message": "..."}`：`code` 是稳定契约（如 `account_not_found`、`last_enabled_account`、`target_not_found`、`too_many_requests`），`message` 可直接展示给用户。
@@ -359,12 +370,12 @@ curl http://localhost:5187/admin/api/status -H "Authorization: Bearer <accessTok
 
 ```bash
 # 创建账号
-curl -X POST http://localhost:5187/admin/api/accounts \
+curl -X POST http://localhost:5387/admin/api/accounts \
   -H "Authorization: Bearer <accessToken>" -H "Content-Type: application/json" \
   -d '{"userName":"alice","password":"<至少 8 位>"}'
 
 # 改自己的密码（必须提供当前密码）
-curl -X PUT http://localhost:5187/admin/api/accounts/me/password \
+curl -X PUT http://localhost:5387/admin/api/accounts/me/password \
   -H "Authorization: Bearer <accessToken>" -H "Content-Type: application/json" \
   -d '{"currentPassword":"<旧密码>","newPassword":"<新密码>"}'
 ```
@@ -382,11 +393,11 @@ curl -X PUT http://localhost:5187/admin/api/accounts/me/password \
 
 ```bash
 # 停用插件（typeName 取自 GET /plugins）
-curl -X PUT http://localhost:5187/admin/api/plugins/AnBot.Plugins.Echo.EchoPlugin/state \
+curl -X PUT http://localhost:5387/admin/api/plugins/AnBot.Plugins.Echo.EchoPlugin/state \
   -H "Authorization: Bearer <accessToken>" -H "Content-Type: application/json" -d '{"enabled":false}'
 
 # 把用户加入黑名单（values 传空数组即清空该名单）
-curl -X PUT http://localhost:5187/admin/api/access-policy/user-blacklist \
+curl -X PUT http://localhost:5387/admin/api/access-policy/user-blacklist \
   -H "Authorization: Bearer <accessToken>" -H "Content-Type: application/json" \
   -d '{"values":["10001"]}'
 ```
@@ -421,7 +432,7 @@ curl -X PUT http://localhost:5187/admin/api/access-policy/user-blacklist \
 - **密码以 PBKDF2-HMAC-SHA256（21 万次迭代）存储**；刷新令牌只存 SHA-256 哈希，明文仅出现在签发响应里。
 - **登录失败不区分「账号不存在」「已停用」「密码错误」**：对外统一失败，真实原因进审计与日志；账号不存在时同样走一次等价的哈希计算，避免按响应时间枚举有效用户名。
 - **全部写操作都进审计**：账号操作（`account.*`）、控制操作（`control.*`）与认证事件（`auth.*`）都记录操作者、目标、来源 IP 与结果，可用 `GET /admin/api/audit-logs` 查询。
-- 对外提供服务时把 `Url` 改为 `http://0.0.0.0:5187`，并置于反向代理与 TLS 之后。
+- 对外提供服务时把 `Url` 改为 `http://0.0.0.0:5387`，并置于反向代理与 TLS 之后。
 
 ## 配置项一览
 
@@ -512,7 +523,7 @@ curl -X PUT http://localhost:5187/admin/api/access-policy/user-blacklist \
 | 键 | 默认值 | 说明 |
 | --- | --- | --- |
 | `Enabled` | `true` | 是否挂载后台；`false` 则不开端口、不建数据库文件 |
-| `Url` | `"http://localhost:5187"` | 监听地址 |
+| `Url` | `"http://localhost:5387"` | 监听地址 |
 | `DatabasePath` | `"anbot-admin.db"` | SQLite 文件；相对路径以可执行文件所在目录为基准 |
 | `Auth:SigningKey` | 空 | JWT 签名密钥，**启用后台时必填**且不少于 32 字节 |
 | `Auth:Issuer` / `Auth:Audience` | `"anbot-admin"` | 令牌的 `iss` / `aud` 声明 |
@@ -538,6 +549,7 @@ src/
   AnBot.Admin.Shared/         后台共享契约：配置、DTO、枚举（零依赖）
   AnBot.Admin.Infrastructure/ 后台基础设施：EF Core、认证与令牌、账号服务、运行时控制、登录限流、审计
   AnBot.Admin.Api/            后台 HTTP 层：REST 端点、JWT 认证、SignalR Hub 与实时推送（类库，由 Cli 挂载）
+  AnBot.Admin.Web/            管理界面：Blazor WebAssembly + MudBlazor（发布时复制到宿主 wwwroot）
 tests/
   AnBot.Core.Tests/
   AnBot.Adapter.Console.Tests/
@@ -779,6 +791,9 @@ dotnet test AnBot.slnx                      # 全量测试
 dotnet test AnBot.slnx --filter "Category=Unit"
 dotnet test AnBot.slnx --filter "Category=Integration"   # 后台 API 集成测试
 dotnet run --project src/AnBot.Cli          # 跑起来
+dotnet run --project src/AnBot.Admin.Web    # 管理界面开发服务器（http://localhost:5242）
+./scripts/start-dev.sh                      # 一键启动后端 + 管理界面（Git Bash / Linux / macOS）
+.\scripts\start-dev.cmd                     # 同上（Windows，双击也可）
 dotnet format AnBot.slnx                    # 提交前格式化
 ```
 
@@ -813,12 +828,12 @@ Core 的地基已完整，两个里程碑已经交付：**接入真实平台**�
 ### 生产化
 
 - **持久化与多实例** — 会话、调度执行历史与分布式锁目前均为内存实现（单机可用）。权限名单由后台负责持久化（落 SQLite，启动时装进内存快照、改动立即生效），但多实例之间仍不共享；跨实例通知目前也是进程内的（后台与内核同进程），尚未引入 Redis。
-- **后台管理的后续** — Vue 前端（`AnBot.Admin.Web`）待做——后端的账号、名单、插件启停与实时推送四条链路都已就绪并端到端验证，唯独还没有可用的界面；后台数据库的 EF 迁移待补（当前用 `EnsureCreated` 建库，新增表后旧库需要删除重建，仅适合开发期）；通用配置热重载未纳入（端口、监听地址这类结构性配置改了也无法生效，见「配置项一览」的说明）。
+- **后台管理的后续** — 管理界面已用 Blazor WebAssembly 实现（登录、仪表盘、账号、插件、名单、审计、实时流）；后台数据库的 EF 迁移待补（当前用 `EnsureCreated` 建库，新增表后旧库需要删除重建，仅适合开发期）；通用配置热重载未纳入（端口、监听地址这类结构性配置改了也无法生效，见「配置项一览」的说明）。
 - **可观测性** — 目前只有结构化日志：指标（Prometheus）与分布式追踪（OpenTelemetry）均未接入；健康检查只有一个手写的 `/health`（恒返回 healthy），还没有 `/ready`，也未接入 .NET 的健康检查框架——编排系统无法区分「进程活着」与「依赖就绪」。
 - **测试基础设施** — 现有 5 个测试项目（394 个测试）：Core、三个适配器（Console/OneBot/Email）与 Admin 服务层是单元/管道测试，跑得快、无外部依赖；后台 API 另有 18 个进程内集成测试（`TestServer` + 临时 SQLite），覆盖路由、JWT 认证、模型绑定与统一错误形状。Redis 与多实例路径仍无集成测试覆盖，Testcontainers 尚未引入；CI 已由 GitHub Actions 在 push/PR 时执行构建、全量测试与格式检查。
 
-优先级建议：**后台前端**投入产出比最高（后端已就绪，只差界面，且不依赖任何架构决策）；
-其次是**可观测性与健康检查**（把单机宿主变成可部署服务的最小前提）；功能广度按上面列出的顺序推进。
+优先级建议：**可观测性与健康检查**（把单机宿主变成可部署服务的最小前提）；
+随后是持久化/多实例与功能广度。
 
 ## 许可证
 

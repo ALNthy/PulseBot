@@ -7,6 +7,10 @@
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
 
+# Blazor WebAssembly 前端（AnBot.Admin.Web）的构建需要 wasm-tools 工作负载。
+# 放在 COPY 之前，源码变化不会让这一层失效。
+RUN dotnet workload install wasm-tools
+
 # 构建配置与 NuGet 配置先入镜像：它们变化频率远低于源码，可复用还原缓存。
 COPY Directory.Build.props Directory.Packages.props global.json nuget.config ./
 COPY AnBot.slnx ./
@@ -47,9 +51,9 @@ RUN mkdir -p /app/data && chown -R app:app /app/data
 # .NET 8+ 的 aspnet 镜像内置非 root 用户 app（APP_UID）。
 USER $APP_UID
 
-# 5187 = 后台管理；6700 = OneBot 12 反向 WebSocket。
+# 5387 = 后台管理；6700 = OneBot 12 反向 WebSocket。
 # 控制台适配器不占端口：容器内没有标准输入，它在启动后会自动停止读取。
-EXPOSE 5187 6700
+EXPOSE 5387 6700
 
 # 内容根是程序所在目录 /app，appsettings.json 随发布产物一同复制。
 ENTRYPOINT ["dotnet", "AnBot.Cli.dll"]

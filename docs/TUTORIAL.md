@@ -216,7 +216,7 @@ AnBot 的 OneBot 12 适配器使用**反向 WebSocket**：**本进程监听端�
 ### 5. 后台管理
 
 后台管理与机器人**同进程**运行，共用同一个 DI 容器，因此它能看到真实的适配器、插件与调度器状态。
-访问入口：`http://localhost:5187`（`Admin:Url`），健康检查在 `/health`。
+访问入口：`http://localhost:5387`（`Admin:Url`），健康检查在 `/health`。
 
 把 `Admin:Enabled` 设为 `false` 就完全不挂载：不开端口、不建数据库文件。只想跑机器人时可以关掉。
 
@@ -264,7 +264,7 @@ AnBot 的 OneBot 12 适配器使用**反向 WebSocket**：**本进程监听端�
 协议是四步，**少一步就什么都收不到**：
 
 ```bash
-BASE=http://localhost:5187
+BASE=http://localhost:5387
 HUB=$BASE/admin/hub
 
 # 0) 先登录拿访问令牌（具体请求体见 README 接口表）

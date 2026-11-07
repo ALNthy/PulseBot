@@ -87,7 +87,7 @@ AnBot 是一个 C# 版、事件驱动的聊天机器人框架。基于 **.NET 10
 - `src/AnBot.Admin.Shared/` — 后台共享 DTO、枚举
 - `src/AnBot.Admin.Infrastructure/` — EF Core 10、仓储、HybridCache
 - `src/AnBot.Admin.Api/` — 后台 REST API（类库，由 `AnBot.Cli` 同进程挂载）
-- `src/AnBot.Admin.Web/` — Vue3 + TypeScript 前端（独立构建）
+- `src/AnBot.Admin.Web/` — 管理界面：Blazor WebAssembly + MudBlazor（独立构建，发布时复制到宿主 `wwwroot`）
 - `tests/` — 对应测试项目
 
 ## 常用命令
@@ -98,7 +98,8 @@ dotnet test --filter "Category=Unit"  # 快速单元测试
 dotnet test --filter "Category=Integration"  # 后台 API 集成测试
 dotnet run --project src/AnBot.Cli   # 宿主；后台管理随它一同启动
 cd docker && docker compose up -d --build   # 容器部署（首次先 cp .env.example .env）
-cd src/AnBot.Admin.Web && npm run dev
+dotnet run --project src/AnBot.Admin.Web   # 管理界面开发服务器（http://localhost:5242）
+./scripts/start-dev.sh                     # 一键启动宿主 + 管理界面（Windows 用 scripts\start-dev.cmd）
 dotnet format                    # 提交前格式化
 ```
 
@@ -163,6 +164,7 @@ dotnet format                    # 提交前格式化
 ## 后台管理
 - `AnBot.Admin.Api` 由 `AnBot.Cli` 同进程挂载（两者共用同一个 DI 容器），通过 `IManagementService` 调用核心。
 - REST 接口使用 MVC 控制器（`ControllerBase` + `[ApiController]`），在类库中通过 `AddApplicationPart` 显式注册；错误响应统一为 `ApiError`。
+- 管理界面使用 Blazor WebAssembly + MudBlazor：开发期由 DevServer 独立运行（5242），生产期发布到宿主 `wwwroot` 同源托管。
 - 实时推送使用 SignalR，前端通过 WebSocket 接收日志、事件、状态。
 - 轻量级实时流可使用 `TypedResults.ServerSentEvents`。
 - 配置修改写入数据库，通过 Redis Pub/Sub 通知核心热重载。

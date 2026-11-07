@@ -1,0 +1,108 @@
+@page "/login"
+@layout LoginLayout
+@inject AuthService Auth
+@inject NavigationManager Navigation
+
+<MudPaper Class="pa-8 login-card" Elevation="0" Style="width: 100%;" @onkeydown="OnKeyDown">
+    <div class="d-flex align-center justify-center mb-2">
+        <MudIcon Icon="@Icons.Material.Filled.SmartToy" Size="Size.Large" Color="Color.Primary" />
+        <MudText Typo="Typo.h4" Class="ml-2">AnBot</MudText>
+    </div>
+
+    <MudText Typo="Typo.body2" Align="Align.Center" Class="mb-6 mud-text-secondary">
+        登录后台管理
+    </MudText>
+
+    <MudForm @ref="_form">
+        <MudTextField @bind-Value="_userName"
+                      Label="用户名"
+                      Variant="Variant.Outlined"
+                      Margin="Margin.Dense"
+                      Required="true"
+                      RequiredError="请输入用户名"
+                      Immediate="true" />
+
+        <MudTextField @bind-Value="_password"
+                      Label="密码"
+                      InputType="InputType.Password"
+                      Variant="Variant.Outlined"
+                      Margin="Margin.Dense"
+                      Class="mt-4"
+                      Required="true"
+                      RequiredError="请输入密码"
+                      Immediate="true" />
+    </MudForm>
+
+    @if (_error is not null)
+    {
+        <MudAlert Severity="Severity.Error" Dense="true" Class="mt-4">@_error</MudAlert>
+    }
+
+    <MudButton Variant="Variant.Filled"
+               Color="Color.Primary"
+               Size="Size.Large"
+               FullWidth="true"
+               Class="mt-6"
+               Disabled="_busy"
+               OnClick="LoginAsync">
+        @(_busy ? "登录中…" : "登录")
+    </MudButton>
+</MudPaper>
+
+@code {
+    private string _userName = string.Empty;
+    private string _password = string.Empty;
+    private string? _error;
+    private bool _busy;
+    private MudForm _form = default!;
+
+    /// <summary>登录成功后要回到的相对路径。</summary>
+    [SupplyParameterFromQuery(Name = "returnUrl")]
+    public string? ReturnUrl { get; set; }
+
+    /// <summary>在用户名或密码输入框里按 Enter 直接提交。</summary>
+    private async Task OnKeyDown(KeyboardEventArgs args)
+    {
+        if (args.Key == "Enter" && !_busy)
+        {
+            await LoginAsync();
+        }
+    }
+
+    private async Task LoginAsync()
+    {
+        await _form.ValidateAsync();
+
+        if (!_form.IsValid)
+        {
+            return;
+        }
+
+        _busy = true;
+        _error = null;
+
+        try
+        {
+            await Auth.LoginAsync(_userName, _password);
+
+            // 只接受站内相对路径，避免 returnUrl 被用来做开放重定向。
+            string target = string.IsNullOrWhiteSpace(ReturnUrl) || ReturnUrl.Contains("://", StringComparison.Ordinal)
+                ? "/"
+                : "/" + ReturnUrl.TrimStart('/');
+
+            Navigation.NavigateTo(target, replace: true);
+        }
+        catch (ApiException ex)
+        {
+            _error = ex.Message;
+        }
+        catch (HttpRequestException)
+        {
+            _error = "无法连接后台服务，请确认宿主已启动。";
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}

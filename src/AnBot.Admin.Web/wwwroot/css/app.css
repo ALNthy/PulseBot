@@ -1,0 +1,73 @@
+/* 后台界面的少量视觉修饰。组件行为与布局骨架仍由 MudBlazor 负责。 */
+
+html,
+body {
+    font-family: "Inter", "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+}
+
+/* 顶栏：深色渐变 + 细分隔线，与抽屉形成整体。 */
+.app-bar {
+    background: linear-gradient(90deg, #0f172a 0%, #1e293b 100%) !important;
+    border-bottom: 1px solid rgba(148, 163, 184, 0.18);
+}
+
+.brand-title {
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    margin-left: 0.35rem;
+}
+
+/* 抽屉导航的分组标题。 */
+.nav-section {
+    color: #94a3b8 !important;
+    font-size: 0.68rem !important;
+    font-weight: 600 !important;
+    letter-spacing: 0.14em;
+    margin: 1.1rem 1rem 0.35rem;
+}
+
+/* 仪表盘指标卡片：悬停轻微上浮，避免静止画面过于扁平。 */
+.stat-card {
+    height: 100%;
+    border: 1px solid rgba(148, 163, 184, 0.18);
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.stat-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 12px 28px rgba(15, 23, 42, 0.1);
+}
+
+.stat-icon {
+    width: 42px;
+    height: 42px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+}
+
+/* 统一页面标题区。 */
+.page-header {
+    margin-bottom: 1.5rem;
+}
+
+/* 窄屏下宽表格横向滚动，避免列被挤压。 */
+.table-scroll {
+    overflow-x: auto;
+}
+
+/* 登录页：柔和的双色光晕，随主题背景色适配暗色模式。 */
+.login-shell {
+    min-height: 100vh;
+    background:
+        radial-gradient(1100px 560px at 8% 8%, rgba(37, 99, 235, 0.16), transparent 60%),
+        radial-gradient(900px 520px at 92% 92%, rgba(124, 58, 237, 0.14), transparent 55%),
+        var(--mud-palette-background);
+}
+
+.login-card {
+    border: 1px solid rgba(148, 163, 184, 0.18);
+    box-shadow: 0 24px 60px rgba(15, 23, 42, 0.14);
+}

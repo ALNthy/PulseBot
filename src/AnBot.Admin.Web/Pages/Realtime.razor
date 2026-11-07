@@ -1,0 +1,143 @@
+@page "/realtime"
+@attribute [Authorize]
+@inject AdminHubClient Hub
+@inject ISnackbar Snackbar
+@implements IAsyncDisposable
+
+<PageHeader Title="实时流" Subtitle="SignalR 推送的日志与事件（各保留最近 200 条）。">
+    <Actions>
+        <MudChip T="string"
+                 Color="@(_connected ? Color.Success : Color.Default)"
+                 Size="Size.Small">
+            @(_connected ? "SignalR 已连接" : "SignalR 未连接")
+        </MudChip>
+    </Actions>
+</PageHeader>
+
+<MudGrid>
+    <MudItem xs="12" lg="6">
+        <MudText Typo="Typo.h6" Class="mb-2">日志（最近 @MaxItems 条）</MudText>
+
+        <MudTable Items="@_logs" Dense="true" Hover="true" Elevation="0" Class="table-scroll">
+            <HeaderContent>
+                <MudTh>时间</MudTh>
+                <MudTh>级别</MudTh>
+                <MudTh>类别</MudTh>
+                <MudTh>消息</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>@context.Timestamp.ToLocalTime().ToString("HH:mm:ss")</MudTd>
+                <MudTd>@context.Level</MudTd>
+                <MudTd>@Shorten(context.Category)</MudTd>
+                <MudTd>@context.Message</MudTd>
+            </RowTemplate>
+            <NoRecordsContent>
+                <MudText>等待日志推送……</MudText>
+            </NoRecordsContent>
+        </MudTable>
+    </MudItem>
+
+    <MudItem xs="12" lg="6">
+        <MudText Typo="Typo.h6" Class="mb-2">事件（最近 @MaxItems 条）</MudText>
+
+        <MudTable Items="@_events" Dense="true" Hover="true" Elevation="0" Class="table-scroll">
+            <HeaderContent>
+                <MudTh>时间</MudTh>
+                <MudTh>类型</MudTh>
+                <MudTh>发送者</MudTh>
+                <MudTh>会话</MudTh>
+                <MudTh>预览</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>@context.OccurredAt.ToLocalTime().ToString("HH:mm:ss")</MudTd>
+                <MudTd>@context.Type</MudTd>
+                <MudTd>@context.SenderId</MudTd>
+                <MudTd>@context.Conversation</MudTd>
+                <MudTd>@context.Preview</MudTd>
+            </RowTemplate>
+            <NoRecordsContent>
+                <MudText>等待事件推送……</MudText>
+            </NoRecordsContent>
+        </MudTable>
+    </MudItem>
+</MudGrid>
+
+@code {
+    private const int MaxItems = 200;
+
+    private readonly List<AdminLogEntry> _logs = [];
+    private readonly List<AdminEventEntry> _events = [];
+    private bool _connected;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Hub.LogReceived += OnLogReceived;
+        Hub.EventReceived += OnEventReceived;
+        Hub.StateChanged += OnStateChanged;
+
+        _connected = Hub.State == Microsoft.AspNetCore.SignalR.Client.HubConnectionState.Connected;
+
+        try
+        {
+            await Hub.StartAsync();
+            _connected = Hub.State == Microsoft.AspNetCore.SignalR.Client.HubConnectionState.Connected;
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"实时连接失败：{ex.Message}", Severity.Warning);
+        }
+    }
+
+    private void OnLogReceived(AdminLogEntry entry)
+    {
+        _ = InvokeAsync(() =>
+        {
+            _logs.Insert(0, entry);
+
+            if (_logs.Count > MaxItems)
+            {
+                _logs.RemoveAt(_logs.Count - 1);
+            }
+
+            StateHasChanged();
+        });
+    }
+
+    private void OnEventReceived(AdminEventEntry entry)
+    {
+        _ = InvokeAsync(() =>
+        {
+            _events.Insert(0, entry);
+
+            if (_events.Count > MaxItems)
+            {
+                _events.RemoveAt(_events.Count - 1);
+            }
+
+            StateHasChanged();
+        });
+    }
+
+    private void OnStateChanged(Microsoft.AspNetCore.SignalR.Client.HubConnectionState state)
+    {
+        _ = InvokeAsync(() =>
+        {
+            _connected = state == Microsoft.AspNetCore.SignalR.Client.HubConnectionState.Connected;
+            StateHasChanged();
+        });
+    }
+
+    private static string Shorten(string category)
+    {
+        int lastDot = category.LastIndexOf('.');
+        return lastDot < 0 ? category : category[(lastDot + 1)..];
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        Hub.LogReceived -= OnLogReceived;
+        Hub.EventReceived -= OnEventReceived;
+        Hub.StateChanged -= OnStateChanged;
+        return ValueTask.CompletedTask;
+    }
+}

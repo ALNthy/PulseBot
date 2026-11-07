@@ -1,0 +1,35 @@
+@* 统一的页面标题区：标题、副标题与右侧操作。 *@
+<div class="page-header">
+    <div class="d-flex align-center flex-wrap" style="gap: 0.75rem;">
+        <div>
+            <MudText Typo="Typo.h4">@Title</MudText>
+            @if (!string.IsNullOrWhiteSpace(Subtitle))
+            {
+                <MudText Typo="Typo.body2" Class="mud-text-secondary">@Subtitle</MudText>
+            }
+        </div>
+
+        <MudSpacer />
+
+        @if (Actions is not null)
+        {
+            <div class="d-flex align-center" style="gap: 0.5rem;">
+                @Actions
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    /// <summary>页面标题。</summary>
+    [Parameter, EditorRequired]
+    public string Title { get; set; } = string.Empty;
+
+    /// <summary>标题下方的一行说明。</summary>
+    [Parameter]
+    public string? Subtitle { get; set; }
+
+    /// <summary>右侧操作区（刷新按钮、筛选器等）。</summary>
+    [Parameter]
+    public RenderFragment? Actions { get; set; }
+}

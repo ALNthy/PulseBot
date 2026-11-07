@@ -1,0 +1,107 @@
+﻿@inherits LayoutComponentBase
+@using Microsoft.AspNetCore.SignalR.Client
+@inject AuthService Auth
+@inject TokenStore Tokens
+@inject AdminHubClient Hub
+@inject ThemeState Theme
+@inject NavigationManager Navigation
+@inject ILogger<MainLayout> Logger
+@implements IDisposable
+
+<MudLayout>
+    <MudAppBar Elevation="0" Dense="true" Class="app-bar">
+        <MudIconButton Icon="@Icons.Material.Filled.Menu"
+                       Color="Color.Inherit"
+                       Edge="Edge.Start"
+                       OnClick="@(() => _drawerOpen = !_drawerOpen)" />
+
+        <MudIcon Icon="@Icons.Material.Filled.SmartToy" Size="Size.Medium" Class="ml-2" />
+        <MudText Typo="Typo.h6" Class="brand-title">AnBot</MudText>
+
+        <MudChip T="string"
+                 Size="Size.Small"
+                 Color="@(_hubConnected ? Color.Success : Color.Default)"
+                 Class="ml-4 d-none d-sm-flex">
+            @(_hubConnected ? "实时在线" : "实时离线")
+        </MudChip>
+
+        <MudSpacer />
+
+        <MudIconButton Icon="@(Theme.IsDarkMode ? Icons.Material.Filled.LightMode : Icons.Material.Filled.DarkMode)"
+                       Color="Color.Inherit"
+                       aria-label="切换主题"
+                       OnClick="ToggleTheme" />
+
+        <MudMenu AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight">
+            <ActivatorContent>
+                <MudAvatar Color="Color.Primary" Size="Size.Small" Class="ml-2">
+                    @Initial
+                </MudAvatar>
+            </ActivatorContent>
+            <ChildContent>
+                <MudMenuItem OnClick="@(() => Navigation.NavigateTo("/accounts"))">账号设置</MudMenuItem>
+                <MudMenuItem OnClick="LogoutAsync">退出登录</MudMenuItem>
+            </ChildContent>
+        </MudMenu>
+    </MudAppBar>
+
+    <MudDrawer @bind-Open="_drawerOpen"
+               Elevation="1"
+               ClipMode="DrawerClipMode.Always"
+               Breakpoint="Breakpoint.Md">
+        <NavMenu />
+    </MudDrawer>
+
+    <MudMainContent Class="pa-4 pa-md-6">
+        <MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="pa-0">
+            @Body
+        </MudContainer>
+    </MudMainContent>
+</MudLayout>
+
+@code {
+    private bool _drawerOpen = true;
+    private bool _hubConnected;
+
+    /// <summary>头像上的用户名首字母。</summary>
+    private string Initial => string.IsNullOrEmpty(Tokens.UserName)
+        ? "A"
+        : Tokens.UserName[..1].ToUpperInvariant();
+
+    /// <summary>
+    /// 布局首次渲染时建立实时连接。连接失败不影响 REST 页面：
+    /// 仪表盘与各管理页仍可正常加载，只是收不到推送。
+    /// </summary>
+    protected override async Task OnInitializedAsync()
+    {
+        Hub.StateChanged += OnHubStateChanged;
+        _hubConnected = Hub.State == HubConnectionState.Connected;
+
+        try
+        {
+            await Hub.StartAsync();
+            _hubConnected = Hub.State == HubConnectionState.Connected;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "后台实时推送连接失败，界面将只使用 REST 数据。");
+        }
+    }
+
+    private void OnHubStateChanged(HubConnectionState state)
+        => _ = InvokeAsync(() =>
+        {
+            _hubConnected = state == HubConnectionState.Connected;
+            StateHasChanged();
+        });
+
+    private Task ToggleTheme() => Theme.ToggleAsync();
+
+    private async Task LogoutAsync()
+    {
+        await Auth.LogoutAsync();
+        Navigation.NavigateTo("/login", replace: true);
+    }
+
+    public void Dispose() => Hub.StateChanged -= OnHubStateChanged;
+}

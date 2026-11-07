@@ -1,0 +1,10 @@
+@inject NavigationManager Navigation
+
+@code {
+    /// <summary>未登录时跳转到登录页，并带上登录后要回到的相对路径。</summary>
+    protected override void OnInitialized()
+    {
+        string returnUrl = Uri.EscapeDataString(Navigation.ToBaseRelativePath(Navigation.Uri));
+        Navigation.NavigateTo($"/login?returnUrl={returnUrl}", replace: true);
+    }
+}

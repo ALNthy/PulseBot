@@ -62,6 +62,8 @@ public static class AdminInfrastructureServiceCollectionExtensions
 
         services.TryAddSingleton<IAuthenticationService, AuthenticationService>();
         services.TryAddSingleton<IAuditLogStore, AuditLogStore>();
+        // 进程指标采样器：单例以保留 CPU 的采样基线（累计 CPU 时间需要两次采样才能算出比例）。
+        services.TryAddSingleton<ProcessMetrics>();
         services.TryAddSingleton<IManagementService, ManagementService>();
         services.TryAddSingleton<IAccountService, AccountService>();
 

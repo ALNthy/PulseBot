@@ -26,6 +26,10 @@ jobs:
           # 跟随 global.json 的 10.0.1xx（rollForward: latestFeature）。
           dotnet-version: 10.0.x
 
+      # Blazor WebAssembly 前端需要 wasm-tools 工作负载才能构建。
+      - name: Install wasm-tools
+        run: dotnet workload install wasm-tools
+
       # 缓存 NuGet 包：键只由包版本清单决定，源码改动不会导致缓存失效。
       - name: Cache NuGet packages
         uses: actions/cache@v4

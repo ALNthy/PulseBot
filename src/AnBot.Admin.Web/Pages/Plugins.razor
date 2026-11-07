@@ -1,0 +1,124 @@
+@page "/plugins"
+@attribute [Authorize]
+@inject AdminApiClient Api
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+
+<PageHeader Title="插件" Subtitle="停用只影响插件注册的命令，事件处理器不会随之停止；改动重启后保持。">
+    <Actions>
+        <MudButton Variant="Variant.Outlined"
+                   StartIcon="@Icons.Material.Filled.Refresh"
+                   OnClick="LoadAsync"
+                   Disabled="_loading">
+            刷新
+        </MudButton>
+    </Actions>
+</PageHeader>
+
+<MudTable Items="@_plugins" Dense="true" Hover="true" Loading="_loading" Class="table-scroll">
+    <HeaderContent>
+        <MudTh>名称</MudTh>
+        <MudTh>版本</MudTh>
+        <MudTh>类型</MudTh>
+        <MudTh>命令</MudTh>
+        <MudTh>加载</MudTh>
+        <MudTh>启用</MudTh>
+    </HeaderContent>
+    <RowTemplate>
+        <MudTd>@context.Name</MudTd>
+        <MudTd>@context.Version</MudTd>
+        <MudTd><code>@context.TypeName</code></MudTd>
+        <MudTd>@string.Join("、", context.Commands)</MudTd>
+        <MudTd>
+            @if (context.IsLoaded)
+            {
+                <MudChip T="string" Size="Size.Small" Color="Color.Success">已加载</MudChip>
+            }
+            else
+            {
+                <MudChip T="string" Size="Size.Small" Color="Color.Warning">失败</MudChip>
+            }
+        </MudTd>
+        <MudTd>
+            <MudSwitch T="bool"
+                       Value="@context.IsEnabled"
+                       ValueChanged="@(value => ToggleAsync(context, value))"
+                       Color="Color.Primary"
+                       Disabled="@(!context.IsLoaded || _busy)" />
+        </MudTd>
+    </RowTemplate>
+    <NoRecordsContent>
+        <MudText>没有加载任何插件。</MudText>
+    </NoRecordsContent>
+</MudTable>
+
+@code {
+    private IReadOnlyList<PluginInfo> _plugins = [];
+    private bool _loading;
+    private bool _busy;
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+
+        try
+        {
+            _plugins = await Api.GetPluginsAsync();
+        }
+        catch (ApiException ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+        catch (HttpRequestException)
+        {
+            Snackbar.Add("无法连接后台服务。", Severity.Error);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task ToggleAsync(PluginInfo plugin, bool enabled)
+    {
+        // 停用会让该插件注册的命令立即不可触发；启用是安全操作，不需要确认。
+        if (!enabled)
+        {
+            IDialogReference dialog = await DialogService.ShowAsync<ConfirmDialog>("停用插件", new DialogParameters
+            {
+                [nameof(ConfirmDialog.Message)] =
+                    $"停用 {plugin.Name} 后，它注册的命令将不再可触发；事件处理器不受影响。",
+                [nameof(ConfirmDialog.ConfirmText)] = "停用",
+            });
+
+            DialogResult? result = await dialog.Result;
+            if (result is not { Canceled: false })
+            {
+                return;
+            }
+        }
+
+        _busy = true;
+
+        try
+        {
+            await Api.SetPluginStateAsync(plugin.TypeName, enabled);
+            Snackbar.Add($"插件 {plugin.Name} 已{(enabled ? "启用" : "停用")}。", Severity.Success);
+            await LoadAsync();
+        }
+        catch (ApiException ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+        catch (HttpRequestException)
+        {
+            Snackbar.Add("无法连接后台服务。", Severity.Error);
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}

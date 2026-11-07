@@ -12,6 +12,13 @@ namespace AnBot.Admin.Shared.Management;
 /// <param name="PluginCount">已加载的插件数量。</param>
 /// <param name="CommandCount">可触发的命令名数量（含别名）。</param>
 /// <param name="ScheduledTaskCount">定时任务数量。</param>
+/// <param name="CpuUsagePercent">
+/// 进程的 CPU 使用率（0–100，按全部逻辑核心平均）。首次采样没有基线，返回 0；
+/// 之后的值是「距上次采样」这段时间的平均值。
+/// </param>
+/// <param name="WorkingSetBytes">进程工作集（物理内存）字节数。</param>
+/// <param name="ManagedMemoryBytes">GC 托管堆当前占用字节数。</param>
+/// <param name="ProcessorCount">逻辑 CPU 核心数。</param>
 public sealed record HostStatusInfo(
     DateTimeOffset StartedAt,
     TimeSpan Uptime,
@@ -21,7 +28,11 @@ public sealed record HostStatusInfo(
     int AdapterCount,
     int PluginCount,
     int CommandCount,
-    int ScheduledTaskCount);
+    int ScheduledTaskCount,
+    double CpuUsagePercent = 0,
+    long WorkingSetBytes = 0,
+    long ManagedMemoryBytes = 0,
+    int ProcessorCount = 0);
 
 /// <summary>一个已注册的适配器。</summary>
 /// <param name="Name">适配器实例名（如 <c>onebot-main</c>）。</param>

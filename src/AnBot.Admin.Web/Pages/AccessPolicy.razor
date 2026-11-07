@@ -1,0 +1,145 @@
+@page "/access-policy"
+@attribute [Authorize]
+@inject AdminApiClient Api
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+
+<PageHeader Title="权限名单" Subtitle="每行一个条目；也可用逗号或分号分隔。保存后立即对运行中的内核生效。">
+    <Actions>
+        <MudButton Variant="Variant.Outlined"
+                   StartIcon="@Icons.Material.Filled.Refresh"
+                   OnClick="LoadAsync"
+                   Disabled="_loading">
+            刷新
+        </MudButton>
+    </Actions>
+</PageHeader>
+
+@if (_loading && _policy is null)
+{
+    <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+}
+else if (_policy is not null)
+{
+    @foreach (PermissionListInfo list in _policy.Lists)
+    {
+        <MudPaper Class="pa-4 mb-4">
+            <MudText Typo="Typo.h6" Class="mb-2">@TitleOf(list.Key)</MudText>
+            <MudText Typo="Typo.caption" Class="mb-2"><code>@list.Key</code></MudText>
+
+            <MudTextField Value="@(_drafts.GetValueOrDefault(list.Key, string.Empty))"
+                          ValueChanged="@((string value) => { _drafts[list.Key] = value; })"
+                          Lines="6"
+                          Variant="Variant.Outlined"
+                          Placeholder="每行一个" />
+
+            <MudButton Class="mt-2"
+                       Variant="Variant.Filled"
+                       Color="Color.Primary"
+                       StartIcon="@Icons.Material.Filled.Save"
+                       Disabled="@(_savingKey == list.Key)"
+                       OnClick="@(() => SaveAsync(list.Key))">
+                @(_savingKey == list.Key ? "保存中…" : "保存")
+            </MudButton>
+        </MudPaper>
+    }
+
+    <MudText Typo="Typo.body2" Class="mt-2">
+        拒绝提示：@_policy.DeniedMessage
+    </MudText>
+}
+else
+{
+    <MudAlert Severity="Severity.Error">无法加载权限名单。</MudAlert>
+}
+
+@code {
+    private AccessPolicyInfo? _policy;
+    private Dictionary<string, string> _drafts = new(StringComparer.Ordinal);
+    private bool _loading;
+    private string? _savingKey;
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+
+        try
+        {
+            _policy = await Api.GetAccessPolicyAsync();
+            _drafts = _policy.Lists.ToDictionary(
+                static list => list.Key,
+                static list => string.Join(Environment.NewLine, list.Values),
+                StringComparer.Ordinal);
+        }
+        catch (ApiException ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+        catch (HttpRequestException)
+        {
+            Snackbar.Add("无法连接后台服务。", Severity.Error);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task SaveAsync(string listKey)
+    {
+        string[] values = (_drafts.GetValueOrDefault(listKey, string.Empty))
+            .Split(new[] { '\n', '\r', ',', ';' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        IDialogReference dialog = await DialogService.ShowAsync<ConfirmDialog>("保存名单", new DialogParameters
+        {
+            [nameof(ConfirmDialog.Message)] =
+                $"将「{TitleOf(listKey)}」替换为 {values.Length} 个条目，并立即对运行中的内核生效。",
+            [nameof(ConfirmDialog.ConfirmText)] = "保存",
+            [nameof(ConfirmDialog.Color)] = Color.Primary,
+        });
+
+        DialogResult? result = await dialog.Result;
+        if (result is not { Canceled: false })
+        {
+            return;
+        }
+
+        _savingKey = listKey;
+
+        try
+        {
+            _policy = await Api.UpdateAccessPolicyAsync(listKey, values);
+            _drafts[listKey] = string.Join(Environment.NewLine, _policy.Lists
+                .First(list => list.Key == listKey)
+                .Values);
+
+            Snackbar.Add($"已保存 {TitleOf(listKey)}。", Severity.Success);
+        }
+        catch (ApiException ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+        catch (HttpRequestException)
+        {
+            Snackbar.Add("无法连接后台服务。", Severity.Error);
+        }
+        finally
+        {
+            _savingKey = null;
+        }
+    }
+
+    private static string TitleOf(string key) => key switch
+    {
+        "super-admins" => "超级管理员",
+        "user-blacklist" => "用户黑名单",
+        "user-whitelist" => "用户白名单",
+        "group-blacklist" => "群黑名单",
+        "group-whitelist" => "群白名单",
+        _ => key,
+    };
+}

@@ -57,6 +57,23 @@
     <PackageVersion Include="MimeKit" Version="4.18.1" />
   </ItemGroup>
 
+  <ItemGroup Label="前端">
+    <!--
+      Blazor WebAssembly 宿主与开发服务器，版本跟随 SDK（10.0.1）。
+      DevServer 只用于 `dotnet run` 开发联调，发布产物不包含它。
+    -->
+    <PackageVersion Include="Microsoft.AspNetCore.Components.WebAssembly" Version="10.0.1" />
+    <PackageVersion Include="Microsoft.AspNetCore.Components.WebAssembly.DevServer" Version="10.0.1" />
+    <!-- 路由授权（AuthorizeRouteView / AuthenticationStateProvider）。 -->
+    <PackageVersion Include="Microsoft.AspNetCore.Components.Authorization" Version="10.0.1" />
+    <!-- 后台管理界面的组件库。 -->
+    <PackageVersion Include="MudBlazor" Version="9.12.0" />
+    <!-- 浏览器端的 SignalR 客户端：接收日志、事件与状态推送。 -->
+    <PackageVersion Include="Microsoft.AspNetCore.SignalR.Client" Version="10.0.0" />
+    <!-- IHttpClientFactory：统一管理 HttpClient 与消息处理器生命周期。 -->
+    <PackageVersion Include="Microsoft.Extensions.Http" Version="10.0.0" />
+  </ItemGroup>
+
   <ItemGroup Label="测试">
     <PackageVersion Include="Moq" Version="4.20.72" />
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />

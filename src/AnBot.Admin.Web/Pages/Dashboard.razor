@@ -1,0 +1,288 @@
+@page "/"
+@attribute [Authorize]
+@inject AdminApiClient Api
+@inject AdminHubClient Hub
+@inject ISnackbar Snackbar
+@implements IAsyncDisposable
+
+<PageHeader Title="仪表盘" Subtitle="宿主状态、适配器、插件与定时任务。">
+    <Actions>
+        <MudButton Variant="Variant.Outlined"
+                   StartIcon="@Icons.Material.Filled.Refresh"
+                   OnClick="LoadAsync"
+                   Disabled="_loading">
+            刷新
+        </MudButton>
+    </Actions>
+</PageHeader>
+
+@if (_loading && _status is null)
+{
+    <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+}
+else if (_status is not null)
+{
+    <MudGrid>
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Class="pa-4 stat-card">
+                <div class="d-flex align-center" style="gap: 0.75rem;">
+                    <div class="stat-icon" style="background: rgba(37,99,235,.12); color: #2563eb;">
+                        <MudIcon Icon="@Icons.Material.Filled.Schedule" />
+                    </div>
+                    <div>
+                        <MudText Typo="Typo.overline">运行时长</MudText>
+                        <MudText Typo="Typo.h6">@FormatUptime(_status.Uptime)</MudText>
+                    </div>
+                </div>
+                <MudText Typo="Typo.caption" Class="mt-2">启动于 @_status.StartedAt.ToLocalTime().ToString("MM-dd HH:mm")</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Class="pa-4 stat-card">
+                <div class="d-flex align-center" style="gap: 0.75rem;">
+                    <div class="stat-icon" style="background: rgba(14,165,233,.12); color: #0284c7;">
+                        <MudIcon Icon="@Icons.Material.Filled.Dns" />
+                    </div>
+                    <div>
+                        <MudText Typo="Typo.overline">进程 / 机器</MudText>
+                        <MudText Typo="Typo.h6">@_status.ProcessId</MudText>
+                    </div>
+                </div>
+                <MudText Typo="Typo.caption" Class="mt-2">@_status.MachineName · .NET @_status.RuntimeVersion</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Class="pa-4 stat-card">
+                <div class="d-flex align-center" style="gap: 0.75rem;">
+                    <div class="stat-icon" style="background: rgba(124,58,237,.12); color: #7c3aed;">
+                        <MudIcon Icon="@Icons.Material.Filled.Extension" />
+                    </div>
+                    <div>
+                        <MudText Typo="Typo.overline">适配器 / 插件</MudText>
+                        <MudText Typo="Typo.h6">@_status.AdapterCount / @_status.PluginCount</MudText>
+                    </div>
+                </div>
+                <MudText Typo="Typo.caption" Class="mt-2">@_status.CommandCount 条命令</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Class="pa-4 stat-card">
+                <div class="d-flex align-center" style="gap: 0.75rem;">
+                    <div class="stat-icon" style="background: rgba(22,163,74,.12); color: #16a34a;">
+                        <MudIcon Icon="@Icons.Material.Filled.TaskAlt" />
+                    </div>
+                    <div>
+                        <MudText Typo="Typo.overline">定时任务</MudText>
+                        <MudText Typo="Typo.h6">@_status.ScheduledTaskCount</MudText>
+                    </div>
+                </div>
+                <MudText Typo="Typo.caption" Class="mt-2">实时推送 @(_hubConnected ? "已连接" : "未连接")</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Class="pa-4 stat-card">
+                <div class="d-flex align-center" style="gap: 0.75rem;">
+                    <div class="stat-icon" style="background: rgba(217,119,6,.12); color: #d97706;">
+                        <MudIcon Icon="@Icons.Material.Filled.Speed" />
+                    </div>
+                    <div>
+                        <MudText Typo="Typo.overline">CPU 占用</MudText>
+                        <MudText Typo="Typo.h6">@_status.CpuUsagePercent.ToString("F1")%</MudText>
+                    </div>
+                </div>
+                <MudProgressLinear Color="@CpuColor"
+                                   Value="@_status.CpuUsagePercent"
+                                   Max="100"
+                                   Class="mt-2" />
+                <MudText Typo="Typo.caption">@_status.ProcessorCount 个逻辑核心</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Class="pa-4 stat-card">
+                <div class="d-flex align-center" style="gap: 0.75rem;">
+                    <div class="stat-icon" style="background: rgba(219,39,119,.12); color: #db2777;">
+                        <MudIcon Icon="@Icons.Material.Filled.Memory" />
+                    </div>
+                    <div>
+                        <MudText Typo="Typo.overline">内存占用</MudText>
+                        <MudText Typo="Typo.h6">@FormatBytes(_status.WorkingSetBytes)</MudText>
+                    </div>
+                </div>
+                <MudText Typo="Typo.caption" Class="mt-2">托管堆 @FormatBytes(_status.ManagedMemoryBytes)</MudText>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+
+    <MudText Typo="Typo.h6" Class="mt-6 mb-2">适配器</MudText>
+    <MudTable Items="@_adapters" Dense="true" Hover="true" Elevation="0" Class="table-scroll">
+        <HeaderContent>
+            <MudTh>名称</MudTh>
+            <MudTh>平台</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@context.Name</MudTd>
+            <MudTd>@context.Platform</MudTd>
+        </RowTemplate>
+        <NoRecordsContent>
+            <MudText>没有注册任何适配器。</MudText>
+        </NoRecordsContent>
+    </MudTable>
+
+    <MudText Typo="Typo.h6" Class="mt-6 mb-2">插件</MudText>
+    <MudTable Items="@_plugins" Dense="true" Hover="true" Elevation="0" Class="table-scroll">
+        <HeaderContent>
+            <MudTh>名称</MudTh>
+            <MudTh>版本</MudTh>
+            <MudTh>命令</MudTh>
+            <MudTh>状态</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@context.Name</MudTd>
+            <MudTd>@context.Version</MudTd>
+            <MudTd>@string.Join("、", context.Commands)</MudTd>
+            <MudTd>
+                @if (!context.IsLoaded)
+                {
+                    <MudChip T="string" Size="Size.Small" Color="Color.Warning">加载失败</MudChip>
+                }
+                else if (context.IsEnabled)
+                {
+                    <MudChip T="string" Size="Size.Small" Color="Color.Success">启用</MudChip>
+                }
+                else
+                {
+                    <MudChip T="string" Size="Size.Small" Color="Color.Default">停用</MudChip>
+                }
+            </MudTd>
+        </RowTemplate>
+        <NoRecordsContent>
+            <MudText>没有加载任何插件。</MudText>
+        </NoRecordsContent>
+    </MudTable>
+
+    <MudText Typo="Typo.h6" Class="mt-6 mb-2">定时任务</MudText>
+    <MudTable Items="@_tasks" Dense="true" Hover="true" Elevation="0" Class="table-scroll">
+        <HeaderContent>
+            <MudTh>任务</MudTh>
+            <MudTh>触发方式</MudTh>
+            <MudTh>下次触发</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@context.TaskId</MudTd>
+            <MudTd>@DescribeSchedule(context)</MudTd>
+            <MudTd>@FormatNextDue(context.NextDueAt)</MudTd>
+        </RowTemplate>
+        <NoRecordsContent>
+            <MudText>没有登记定时任务。</MudText>
+        </NoRecordsContent>
+    </MudTable>
+}
+else
+{
+    <MudAlert Severity="Severity.Error">无法加载宿主状态，请确认后台服务可用。</MudAlert>
+}
+
+@code {
+    private HostStatusInfo? _status;
+    private IReadOnlyList<AdapterInfo> _adapters = [];
+    private IReadOnlyList<PluginInfo> _plugins = [];
+    private IReadOnlyList<ScheduledTaskInfo> _tasks = [];
+    private bool _loading;
+    private bool _hubConnected;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Hub.StatusChanged += OnStatusChanged;
+        Hub.StateChanged += OnHubStateChanged;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+
+        try
+        {
+            _status = await Api.GetStatusAsync();
+            _adapters = await Api.GetAdaptersAsync();
+            _plugins = await Api.GetPluginsAsync();
+            _tasks = await Api.GetScheduledTasksAsync();
+        }
+        catch (ApiException ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+        catch (HttpRequestException)
+        {
+            Snackbar.Add("无法连接后台服务。", Severity.Error);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private void OnStatusChanged(HostStatusInfo status)
+    {
+        _ = InvokeAsync(() =>
+        {
+            _status = status;
+            StateHasChanged();
+        });
+    }
+
+    private void OnHubStateChanged(Microsoft.AspNetCore.SignalR.Client.HubConnectionState state)
+    {
+        _ = InvokeAsync(() =>
+        {
+            _hubConnected = state == Microsoft.AspNetCore.SignalR.Client.HubConnectionState.Connected;
+            StateHasChanged();
+        });
+    }
+
+    /// <summary>CPU 占用越高颜色越警示：60% 以上黄色，85% 以上红色。</summary>
+    private Color CpuColor => (_status?.CpuUsagePercent ?? 0) switch
+    {
+        >= 85 => Color.Error,
+        >= 60 => Color.Warning,
+        _ => Color.Success,
+    };
+
+    /// <summary>把字节数格式化为 1 KB / 1.5 MB 这类便于阅读的形式。</summary>
+    private static string FormatBytes(long bytes)
+    {
+        string[] units = ["B", "KB", "MB", "GB", "TB"];
+        double value = bytes;
+        int unit = 0;
+
+        while (value >= 1024 && unit < units.Length - 1)
+        {
+            value /= 1024;
+            unit++;
+        }
+
+        return $"{value:F1} {units[unit]}";
+    }
+
+    private static string FormatUptime(TimeSpan uptime)
+        => uptime.TotalDays >= 1
+            ? $"{(int)uptime.TotalDays} 天 {uptime.Hours} 小时"
+            : $"{uptime.Hours} 小时 {uptime.Minutes} 分";
+
+    private static string DescribeSchedule(ScheduledTaskInfo task)
+        => task.ScheduleKind == "cron"
+            ? $"Cron {task.CronExpression}（{task.TimeZoneId}）"
+            : $"每 {task.Interval}";
+
+    private static string FormatNextDue(DateTimeOffset nextDue)
+        => nextDue == DateTimeOffset.MaxValue
+            ? "已停摆"
+            : nextDue.ToLocalTime().ToString("MM-dd HH:mm:ss");
+
+    public ValueTask DisposeAsync()
+    {
+        Hub.StatusChanged -= OnStatusChanged;
+        Hub.StateChanged -= OnHubStateChanged;
+        return ValueTask.CompletedTask;
+    }
+}

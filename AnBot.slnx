@@ -6,6 +6,7 @@
     <Project Path="src/AnBot.Admin.Api/AnBot.Admin.Api.csproj" />
     <Project Path="src/AnBot.Admin.Infrastructure/AnBot.Admin.Infrastructure.csproj" />
     <Project Path="src/AnBot.Admin.Shared/AnBot.Admin.Shared.csproj" />
+    <Project Path="src/AnBot.Admin.Web/AnBot.Admin.Web.csproj" />
     <Project Path="src/AnBot.Cli/AnBot.Cli.csproj" />
     <Project Path="src/AnBot.Core/AnBot.Core.csproj" />
     <Project Path="src/AnBot.Plugins.Echo/AnBot.Plugins.Echo.csproj" />

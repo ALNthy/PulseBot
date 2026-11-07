@@ -1,0 +1,42 @@
+﻿@inject ThemeState ThemeState
+@implements IDisposable
+
+@* MudBlazor 的根级服务组件：主题、弹层、对话框与全局提示。 *@
+<MudThemeProvider Theme="@_theme" IsDarkMode="@ThemeState.IsDarkMode" />
+<MudPopoverProvider />
+<MudDialogProvider />
+<MudSnackbarProvider />
+
+<CascadingAuthenticationState>
+    <Router AppAssembly="@typeof(App).Assembly">
+        <Found Context="routeData">
+            <AuthorizeRouteView RouteData="@routeData" DefaultLayout="@typeof(MainLayout)">
+                <Authorizing>
+                    <div class="d-flex justify-center pa-8">
+                        <MudProgressCircular Indeterminate="true" Color="Color.Primary" />
+                    </div>
+                </Authorizing>
+                <NotAuthorized>
+                    <RedirectToLogin />
+                </NotAuthorized>
+            </AuthorizeRouteView>
+            <FocusOnNavigate RouteData="@routeData" Selector="h1" />
+        </Found>
+        <NotFound>
+            <LayoutView Layout="@typeof(MainLayout)">
+                <MudAlert Severity="Severity.Warning">页面不存在。</MudAlert>
+            </LayoutView>
+        </NotFound>
+    </Router>
+</CascadingAuthenticationState>
+
+@code {
+    private readonly MudTheme _theme = AnBotTheme.Create();
+
+    protected override void OnInitialized()
+        => ThemeState.Changed += OnThemeChanged;
+
+    private void OnThemeChanged() => InvokeAsync(StateHasChanged);
+
+    public void Dispose() => ThemeState.Changed -= OnThemeChanged;
+}

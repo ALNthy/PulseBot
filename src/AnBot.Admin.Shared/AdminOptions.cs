@@ -22,10 +22,10 @@ public sealed class AdminOptions
     public bool Enabled { get; set; } = true;
 
     /// <summary>
-    /// 后台监听地址，形如 <c>http://localhost:5187</c>。
-    /// 需要对外提供服务时改为 <c>http://0.0.0.0:5187</c>，并自行置于反向代理与 TLS 之后。
+    /// 后台监听地址，形如 <c>http://localhost:5387</c>。
+    /// 需要对外提供服务时改为 <c>http://0.0.0.0:5387</c>，并自行置于反向代理与 TLS 之后。
     /// </summary>
-    public string Url { get; set; } = "http://localhost:5187";
+    public string Url { get; set; } = "http://localhost:5387";
 
     /// <summary>
     /// SQLite 数据库文件路径。相对路径以宿主内容根目录（可执行文件所在目录）为基准。

@@ -13,7 +13,28 @@
     <ProjectReference Include="..\AnBot.Adapter.OneBot\AnBot.Adapter.OneBot.csproj" />
     <ProjectReference Include="..\AnBot.Plugins.Echo\AnBot.Plugins.Echo.csproj" />
     <ProjectReference Include="..\AnBot.Admin.Api\AnBot.Admin.Api.csproj" />
+    <!--
+      只参与构建与发布，不把 WASM 程序集作为编译引用带入宿主：
+      前端产物在发布阶段复制到 wwwroot，由 ASP.NET Core 静态文件中间件托管。
+    -->
+    <ProjectReference Include="..\AnBot.Admin.Web\AnBot.Admin.Web.csproj"
+                      ReferenceOutputAssembly="false"
+                      Private="false" />
   </ItemGroup>
+
+  <!--
+    发布宿主时一并发布 Blazor WebAssembly 前端，产物落到输出目录下的 wwwroot。
+    开发期不会触发：前端由 dotnet run（项目 src/AnBot.Admin.Web）独立运行。
+  -->
+  <Target Name="PublishAdminWeb" AfterTargets="Publish">
+    <!--
+      Blazor WASM 的发布输出自身包含 wwwroot 子目录，因此这里把 PublishDir 设为宿主输出目录，
+      前端的静态站点会正好落到 <输出目录>/wwwroot，与 ASP.NET Core 的 WebRootPath 对齐。
+    -->
+    <MSBuild Projects="$(MSBuildThisFileDirectory)..\AnBot.Admin.Web\AnBot.Admin.Web.csproj"
+             Targets="Publish"
+             Properties="Configuration=$(Configuration);PublishDir=$(PublishDir)" />
+  </Target>
 
   <!--
     后台 HTTP 服务：宿主进程内承载 ASP.NET Core 管道。

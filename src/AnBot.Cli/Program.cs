@@ -77,6 +77,17 @@ builder.Services.Configure<AdminOptions>(
 builder.Services.AddAdminInfrastructure();
 builder.Services.AddAdminApi();
 
+// 开发期前端由 Blazor DevServer 独立运行（http://localhost:5242），与后台不同源。
+// 生产部署时前端产物由本宿主同源托管，请求不经过 CORS。
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("AdminWebDev", policy => policy
+        .WithOrigins("http://localhost:5242")
+        .AllowAnyHeader()
+        .AllowAnyMethod()
+        .AllowCredentials());
+});
+
 // 后台的实时事件流：把每条进入管道的事件复制一份摘要推给后台。
 // 挂在 Core 的中间件扩展点上，具体位置由中间件自身的优先级决定（见 AdminEventMirror.Priority）。
 builder.Services.AddEventMiddleware<AdminEventMirror>();
@@ -102,7 +113,29 @@ builder.Services.AddHostedService<SchedulerHostedService>();
 
 WebApplication app = builder.Build();
 
+// 管道顺序：路由 → CORS → 认证 → 授权。
+// CORS 必须在路由之后、认证之前：预检请求由 UseCors 直接处理，
+// 实际请求则需要在端点匹配后由 CORS 中间件补上响应头。
+// 显式调用 UseRouting 后，认证与授权中间件也必须显式声明——
+// WebApplication 的自动注入只在没有显式路由时生效。
+app.UseRouting();
+app.UseCors("AdminWebDev");
+app.UseAuthentication();
+app.UseAuthorization();
+
 // 挂载后台接口；Admin:Enabled 为 false 时本调用不做任何事。
 app.MapAdminApi();
+
+// 发布产物包含 Blazor WebAssembly 前端（<输出目录>/wwwroot）时，由宿主同源托管。
+// 开发期该目录不存在，前端由 DevServer 独立运行，这里整段跳过。
+string webRoot = app.Environment.WebRootPath ?? Path.Combine(AppContext.BaseDirectory, "wwwroot");
+if (File.Exists(Path.Combine(webRoot, "index.html")))
+{
+    app.UseDefaultFiles();
+    app.UseStaticFiles();
+
+    // 前端是单页应用：未知路径交回 index.html，由客户端路由处理。
+    app.MapFallbackToFile("index.html");
+}
 
 await app.RunAsync();

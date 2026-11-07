@@ -1,0 +1,91 @@
+@page "/audit-logs"
+@attribute [Authorize]
+@inject AdminApiClient Api
+@inject ISnackbar Snackbar
+
+<PageHeader Title="审计日志" Subtitle="最近的敏感操作记录；审计只增不改。">
+    <Actions>
+        <MudSelect T="int" @bind-Value="_maxCount" Label="条数" Variant="Variant.Outlined" Dense="true" Style="max-width: 140px;">
+            <MudSelectItem T="int" Value="50">50 条</MudSelectItem>
+            <MudSelectItem T="int" Value="100">100 条</MudSelectItem>
+            <MudSelectItem T="int" Value="200">200 条</MudSelectItem>
+        </MudSelect>
+
+        <MudButton Variant="Variant.Outlined"
+                   StartIcon="@Icons.Material.Filled.Refresh"
+                   OnClick="LoadAsync"
+                   Disabled="_loading">
+            刷新
+        </MudButton>
+    </Actions>
+</PageHeader>
+
+<MudTable Items="@_logs" Dense="true" Hover="true" Loading="_loading" Class="table-scroll">
+    <HeaderContent>
+        <MudTh>时间</MudTh>
+        <MudTh>动作</MudTh>
+        <MudTh>操作者</MudTh>
+        <MudTh>目标</MudTh>
+        <MudTh>结果</MudTh>
+        <MudTh>详情</MudTh>
+        <MudTh>来源 IP</MudTh>
+    </HeaderContent>
+    <RowTemplate>
+        <MudTd>@context.OccurredAt.ToLocalTime().ToString("MM-dd HH:mm:ss")</MudTd>
+        <MudTd><code>@context.Action</code></MudTd>
+        <MudTd>@context.ActorName</MudTd>
+        <MudTd>@FormatTarget(context)</MudTd>
+        <MudTd>
+            @if (context.Success)
+            {
+                <MudChip T="string" Size="Size.Small" Color="Color.Success">成功</MudChip>
+            }
+            else
+            {
+                <MudChip T="string" Size="Size.Small" Color="Color.Error">失败</MudChip>
+            }
+        </MudTd>
+        <MudTd>@context.Detail</MudTd>
+        <MudTd>@context.RemoteIp</MudTd>
+    </RowTemplate>
+    <NoRecordsContent>
+        <MudText>没有审计记录。</MudText>
+    </NoRecordsContent>
+</MudTable>
+
+@code {
+    private IReadOnlyList<AuditLogInfo> _logs = [];
+    private int _maxCount = 100;
+    private bool _loading;
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+
+        try
+        {
+            _logs = await Api.GetAuditLogsAsync(_maxCount);
+        }
+        catch (ApiException ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+        catch (HttpRequestException)
+        {
+            Snackbar.Add("无法连接后台服务。", Severity.Error);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private static string FormatTarget(AuditLogInfo log)
+        => log.TargetType is null
+            ? "—"
+            : log.TargetId is null
+                ? log.TargetType
+                : $"{log.TargetType}:{log.TargetId}";
+}

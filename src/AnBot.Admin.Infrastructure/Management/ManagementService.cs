@@ -26,6 +26,7 @@ public sealed class ManagementService : IManagementService
     private readonly PluginManager _plugins;
     private readonly ICommandDispatcher _commands;
     private readonly Scheduler _scheduler;
+    private readonly ProcessMetrics _metrics;
     private readonly TimeProvider _time;
 
     /// <summary>
@@ -38,18 +39,21 @@ public sealed class ManagementService : IManagementService
     /// <param name="plugins">插件管理器。</param>
     /// <param name="commands">命令分发器（读取命令表快照）。</param>
     /// <param name="scheduler">定时任务调度器。</param>
+    /// <param name="metrics">进程 CPU/内存指标采样器。</param>
     /// <param name="time">时间源。</param>
     public ManagementService(
         IEnumerable<IAdapter> adapters,
         PluginManager plugins,
         ICommandDispatcher commands,
         Scheduler scheduler,
+        ProcessMetrics metrics,
         TimeProvider time)
     {
         ArgumentNullException.ThrowIfNull(adapters);
         ArgumentNullException.ThrowIfNull(plugins);
         ArgumentNullException.ThrowIfNull(commands);
         ArgumentNullException.ThrowIfNull(scheduler);
+        ArgumentNullException.ThrowIfNull(metrics);
         ArgumentNullException.ThrowIfNull(time);
 
         // 物化一次，避免每次请求都重新枚举容器。
@@ -57,6 +61,7 @@ public sealed class ManagementService : IManagementService
         _plugins = plugins;
         _commands = commands;
         _scheduler = scheduler;
+        _metrics = metrics;
         _time = time;
         _startedAt = time.GetUtcNow();
     }
@@ -67,6 +72,7 @@ public sealed class ManagementService : IManagementService
         cancellationToken.ThrowIfCancellationRequested();
 
         DateTimeOffset now = _time.GetUtcNow();
+        ProcessMemory memory = _metrics.GetMemory();
 
         var status = new HostStatusInfo(
             StartedAt: _startedAt,
@@ -77,7 +83,11 @@ public sealed class ManagementService : IManagementService
             AdapterCount: _adapters.Count,
             PluginCount: _plugins.LoadedPlugins.Count,
             CommandCount: _commands.Commands.Count,
-            ScheduledTaskCount: _scheduler.Tasks.Count);
+            ScheduledTaskCount: _scheduler.Tasks.Count,
+            CpuUsagePercent: _metrics.GetCpuUsagePercent(),
+            WorkingSetBytes: memory.WorkingSetBytes,
+            ManagedMemoryBytes: memory.ManagedBytes,
+            ProcessorCount: Environment.ProcessorCount);
 
         return ValueTask.FromResult(status);
     }

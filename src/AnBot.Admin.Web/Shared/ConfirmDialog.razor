@@ -1,0 +1,40 @@
+@* 通用二次确认对话框：用于停用、强制下线、重置密码等不可撤销操作。 *@
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">@Title</MudText>
+    </TitleContent>
+
+    <DialogContent>
+        <MudText>@Message</MudText>
+    </DialogContent>
+
+    <DialogActions>
+        <MudButton Variant="Variant.Text" OnClick="Cancel">取消</MudButton>
+        <MudButton Variant="Variant.Filled" Color="@Color" OnClick="Submit">@ConfirmText</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter]
+    private IMudDialogInstance MudDialog { get; set; } = default!;
+
+    /// <summary>对话框标题。</summary>
+    [Parameter]
+    public string Title { get; set; } = "确认操作";
+
+    /// <summary>操作说明。</summary>
+    [Parameter]
+    public string Message { get; set; } = string.Empty;
+
+    /// <summary>确认按钮文字。</summary>
+    [Parameter]
+    public string ConfirmText { get; set; } = "确认";
+
+    /// <summary>确认按钮颜色；破坏性操作默认红色。</summary>
+    [Parameter]
+    public Color Color { get; set; } = Color.Error;
+
+    private void Submit() => MudDialog.Close(DialogResult.Ok(true));
+
+    private void Cancel() => MudDialog.Cancel();
+}
