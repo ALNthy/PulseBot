@@ -36,17 +36,17 @@ jobs:
             ${{ runner.os }}-nuget-
 
       - name: Restore
-        run: dotnet restore PulseBot.slnx
+        run: dotnet restore AnBot.slnx
 
       # 用 Release 构建：与发布产物一致，也能暴露只在优化下出现的问题。
       - name: Build
-        run: dotnet build PulseBot.slnx --no-restore --configuration Release
+        run: dotnet build AnBot.slnx --no-restore --configuration Release
 
       # 包含单元测试与后台 API 集成测试；后者用 TestServer + 临时 SQLite，
       # 不需要数据库容器或任何外部服务。
       - name: Test
-        run: dotnet test PulseBot.slnx --no-build --configuration Release --verbosity normal
+        run: dotnet test AnBot.slnx --no-build --configuration Release --verbosity normal
 
       # 格式检查与本地 `dotnet format` 使用同一套规则；有差异即失败。
       - name: Verify formatting
-        run: dotnet format PulseBot.slnx --verify-no-changes --no-restore
+        run: dotnet format AnBot.slnx --verify-no-changes --no-restore

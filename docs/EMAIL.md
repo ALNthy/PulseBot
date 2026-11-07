@@ -1,6 +1,6 @@
 # 邮件适配器使用指南
 
-邮件适配器（`PulseBot.Adapter.Email`）把**一个自有邮箱**当作聊天平台接入 PulseBot：
+邮件适配器（`AnBot.Adapter.Email`）把**一个自有邮箱**当作聊天平台接入 AnBot：
 用 IMAP 收信，把邮件翻译成 Core 的 `MessageEvent`；插件的回复通过 SMTP 发回发件人。
 
 它适合「没有即时通讯平台、但需要一个可编程消息入口」的场景，例如个人服务器告警、
@@ -63,8 +63,8 @@
 
       // 机器人身份
       "FromAddress": "12345678@qq.com",
-      "FromDisplayName": "PulseBot",
-      "Subject": "PulseBot",
+      "FromDisplayName": "AnBot",
+      "Subject": "AnBot",
 
       // 准入：两者至少填一个，否则适配器拒绝启动
       "AllowedSenders": ["your-address@example.com"],
@@ -89,7 +89,7 @@ $env:Adapters__Email__Password = '你的授权码'
 ### 2.3 启动与验证
 
 ```bash
-dotnet run --project src/PulseBot.Cli
+dotnet run --project src/AnBot.Cli
 ```
 
 启动日志中应出现：
@@ -105,7 +105,7 @@ dotnet run --project src/PulseBot.Cli
 /echo 你好
 ```
 
-等待一个 `IdleTimeout` 周期（默认约 30 秒），机器人会回复一封主题为 `Re: PulseBot`
+等待一个 `IdleTimeout` 周期（默认约 30 秒），机器人会回复一封主题为 `Re: AnBot`
 的纯文本邮件。如果没收到，见第 6 节排错。
 
 ---
@@ -113,7 +113,7 @@ dotnet run --project src/PulseBot.Cli
 ## 3. 配置项详解
 
 配置节：`Adapters:Email`。类型定义见
-[EmailAdapterOptions.cs](../src/PulseBot.Adapter.Email/EmailAdapterOptions.cs)。
+[EmailAdapterOptions.cs](../src/AnBot.Adapter.Email/EmailAdapterOptions.cs)。
 
 | 键 | 默认值 | 必填 | 说明 |
 | --- | --- | --- | --- |
@@ -129,9 +129,9 @@ dotnet run --project src/PulseBot.Cli
 | `SmtpSecurity` | `"StartTls"` | — | 同 `ImapSecurity` |
 | `UserName` | 空 | ✅ | IMAP 与 SMTP 共用的登录用户名（通常是完整邮箱地址） |
 | `Password` | 空 | ✅ | 登录密码或授权码；建议用 `Adapters__Email__Password` 环境变量注入 |
-| `FromAddress` | 空 | ✅ | 机器人发件地址；可写成 `PulseBot <bot@example.com>`，也用于忽略自发邮件 |
-| `FromDisplayName` | `"PulseBot"` | — | 发件人展示名 |
-| `Subject` | `"PulseBot"` | ✅ | 主动发送时的主题；回复自动加 `Re: ` 前缀（已有则不重复） |
+| `FromAddress` | 空 | ✅ | 机器人发件地址；可写成 `AnBot <bot@example.com>`，也用于忽略自发邮件 |
+| `FromDisplayName` | `"AnBot"` | — | 发件人展示名 |
+| `Subject` | `"AnBot"` | ✅ | 主动发送时的主题；回复自动加 `Re: ` 前缀（已有则不重复） |
 | `AllowedSenders` | `[]` | 见说明 | 允许交互的完整发件地址，不区分大小写 |
 | `AllowedDomains` | `[]` | 见说明 | 允许交互的发件域名（可带或不带 `@`），不区分大小写；与地址白名单取并集 |
 
@@ -190,7 +190,7 @@ dotnet run --project src/PulseBot.Cli
 - 两者都为空时正文为空字符串。
 
 `Message-ID` 会规范化为带尖括号的形式；缺失时生成一个本地占位 id
-（`<pulsebot-…@localhost>`），此时回复无法正确串起线程。
+（`<anbot-…@localhost>`），此时回复无法正确串起线程。
 
 ### 4.5 发件
 

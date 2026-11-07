@@ -27,8 +27,8 @@
 
   <!-- 所有项目共用的基础元数据 -->
   <PropertyGroup>
-    <Authors>PulseBot</Authors>
-    <Product>PulseBot</Product>
+    <Authors>AnBot</Authors>
+    <Product>AnBot</Product>
     <VersionPrefix>0.1.0</VersionPrefix>
   </PropertyGroup>
 

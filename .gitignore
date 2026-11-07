@@ -18,7 +18,7 @@ coverage*.json
 coverage*.xml
 *.coverage
 
-# ---------- 前端（PulseBot.Admin.Web）----------
+# ---------- 前端（AnBot.Admin.Web）----------
 node_modules/
 dist/
 

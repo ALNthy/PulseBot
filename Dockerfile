@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 
 # ============================================================================
-# 构建阶段：还原依赖并发布 PulseBot.Cli（含内核、适配器、插件与后台）。
+# 构建阶段：还原依赖并发布 AnBot.Cli（含内核、适配器、插件与后台）。
 # ============================================================================
 
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
@@ -9,17 +9,17 @@ WORKDIR /src
 
 # 构建配置与 NuGet 配置先入镜像：它们变化频率远低于源码，可复用还原缓存。
 COPY Directory.Build.props Directory.Packages.props global.json nuget.config ./
-COPY PulseBot.slnx ./
+COPY AnBot.slnx ./
 
 # 只复制宿主需要的源码；tests/ 不参与发布。
 COPY src/ ./src/
 
 # 还原 Cli 及其全部 ProjectReference（Core、适配器、插件、Admin.*）。
-RUN dotnet restore src/PulseBot.Cli/PulseBot.Cli.csproj
+RUN dotnet restore src/AnBot.Cli/AnBot.Cli.csproj
 
 # 发布为框架依赖部署：运行阶段由 aspnet 共享框架提供运行时。
-# UseAppHost=false 不生成原生可执行文件，入口统一用 `dotnet PulseBot.Cli.dll`。
-RUN dotnet publish src/PulseBot.Cli/PulseBot.Cli.csproj \
+# UseAppHost=false 不生成原生可执行文件，入口统一用 `dotnet AnBot.Cli.dll`。
+RUN dotnet publish src/AnBot.Cli/AnBot.Cli.csproj \
         --configuration Release \
         --no-restore \
         --output /app/publish \
@@ -52,4 +52,4 @@ USER $APP_UID
 EXPOSE 5187 6700
 
 # 内容根是程序所在目录 /app，appsettings.json 随发布产物一同复制。
-ENTRYPOINT ["dotnet", "PulseBot.Cli.dll"]
+ENTRYPOINT ["dotnet", "AnBot.Cli.dll"]

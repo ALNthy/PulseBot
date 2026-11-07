@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    OneBot 协议适配器：把 OneBot 原始事件转换为 Core 的 IEvent / MessageSegment。
+    同一项目容纳多个协议版本，各自占一个子命名空间（当前已实现 V12，见 V12/ 目录）。
+  -->
+  <PropertyGroup>
+    <RootNamespace>AnBot.Adapter.OneBot</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\AnBot.Core\AnBot.Core.csproj" />
+  </ItemGroup>
+
+</Project>

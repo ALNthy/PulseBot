@@ -1,0 +1,39 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    后台管理测试：密码哈希、令牌、认证流程、审计日志与配置校验。
+    单元测试必须标注 [Trait("Category", "Unit")]，以便按 Category 过滤时能选中它们。
+  -->
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <RootNamespace>AnBot.Admin.Tests</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\AnBot.Admin.Infrastructure\AnBot.Admin.Infrastructure.csproj" />
+    <!--
+      实时推送的三个组件（缓冲、日志广播器、事件镜像）定义在 Api 项目里。
+      引它同时会带来 ASP.NET Core 的框架引用，测试项目因此能用到 SignalR 的类型。
+    -->
+    <ProjectReference Include="..\..\src\AnBot.Admin.Api\AnBot.Admin.Api.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!--
+      内存 SQLite：认证与审计测试跑真实的 EF Core 查询翻译，而不是内存假仓储。
+      这不是可有可无的选择——「SQLite 不支持在 SQL 层对 DateTimeOffset 排序」这类问题
+      只有真实数据库才暴露得出来，假仓储会一路给出通过。
+    -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" />
+    <PackageReference Include="Microsoft.AspNetCore.TestHost" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+    <PackageReference Include="coverlet.collector" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+</Project>

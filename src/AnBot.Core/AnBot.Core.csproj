@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    AnBot 内核：事件分发、插件管理、适配器契约、命令分发、会话、权限、中间件、定时任务。
+    按 CLAUDE.md 架构约束，本工程不得引用任何 Adapter.* / Plugins.* / Admin.* 项目，
+    也不得引用 Hosting 抽象（后台循环一律由宿主驱动，见 PluginManager 与 ISessionStore 的说明）。
+  -->
+  <PropertyGroup>
+    <RootNamespace>AnBot.Core</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.Options" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- 仅用于解析 Cron 表达式，见 Directory.Packages.props 的说明。 -->
+    <PackageReference Include="Cronos" />
+  </ItemGroup>
+
+</Project>

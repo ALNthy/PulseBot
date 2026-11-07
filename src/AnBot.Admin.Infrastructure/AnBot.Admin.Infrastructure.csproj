@@ -1,0 +1,34 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    后台基础设施：EF Core 数据访问、认证服务，以及 IManagementService 的实现。
+    引用 Core 是为了读取内核的运行状态（命令表、调度器、插件、适配器）——
+    方向是 Admin → Core，Core 不反向依赖任何 Admin.* 项目。
+  -->
+  <PropertyGroup>
+    <RootNamespace>AnBot.Admin.Infrastructure</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\AnBot.Admin.Shared\AnBot.Admin.Shared.csproj" />
+    <ProjectReference Include="..\AnBot.Core\AnBot.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" />
+    <!-- IHostedService：启动期建库与引导账号。 -->
+    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" />
+    <!-- 访问令牌的签发与校验参数；认证中间件（在 Admin.Api）复用同一套原语。 -->
+    <PackageReference Include="Microsoft.IdentityModel.JsonWebTokens" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!--
+      测试项目需要访问 AdminOptionsValidator（internal）。配置校验是启动期的安全防呆逻辑，
+      必须有测试覆盖；不值得为了可见性把它提升为公开 API——它本就不该被外部调用。
+    -->
+    <InternalsVisibleTo Include="AnBot.Admin.Tests" />
+  </ItemGroup>
+
+</Project>

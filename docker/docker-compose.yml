@@ -1,4 +1,4 @@
-# PulseBot 容器编排。
+# AnBot 容器编排。
 #
 # 用法：
 #   cp docker/.env.example docker/.env    # 填入签名密钥与管理员密码
@@ -6,16 +6,16 @@
 #
 # 后台管理与机器人同进程：5187 是后台 REST/SignalR，6700 是 OneBot 12 反向 WebSocket。
 
-name: pulsebot
+name: anbot
 
 services:
-  pulsebot:
+  anbot:
     build:
       # 构建上下文是仓库根：Dockerfile 需要 src/ 与 Directory.*.props。
       context: ..
       dockerfile: Dockerfile
-    image: pulsebot:latest
-    container_name: pulsebot
+    image: anbot:latest
+    container_name: anbot
     restart: unless-stopped
 
     ports:
@@ -28,24 +28,24 @@ services:
       # 容器内必须监听 0.0.0.0：默认的 localhost 只绑定容器回环，端口映射无法访问。
       Admin__Url: "http://0.0.0.0:5187"
       # SQLite 落到命名卷；默认相对路径会落在 /app，容器重建即丢失。
-      Admin__DatabasePath: "/app/data/pulsebot-admin.db"
+      Admin__DatabasePath: "/app/data/anbot-admin.db"
       # 必填项用 :? 语法：变量未设置时 compose 直接报错，而不是静默沿用开发默认值。
-      Admin__Auth__SigningKey: "${PULSEBOT_SIGNING_KEY:?请在 docker/.env 中设置 PULSEBOT_SIGNING_KEY（至少 32 字节随机串）}"
-      Admin__Auth__BootstrapUser: "${PULSEBOT_ADMIN_USER:-admin}"
-      Admin__Auth__BootstrapPassword: "${PULSEBOT_ADMIN_PASSWORD:?请在 docker/.env 中设置 PULSEBOT_ADMIN_PASSWORD}"
+      Admin__Auth__SigningKey: "${ANBOT_SIGNING_KEY:?请在 docker/.env 中设置 ANBOT_SIGNING_KEY（至少 32 字节随机串）}"
+      Admin__Auth__BootstrapUser: "${ANBOT_ADMIN_USER:-admin}"
+      Admin__Auth__BootstrapPassword: "${ANBOT_ADMIN_PASSWORD:?请在 docker/.env 中设置 ANBOT_ADMIN_PASSWORD}"
 
       # ---------- OneBot 12 ----------
       # 默认 localhost 同样只监听容器回环；实现端（宿主机或其他容器）连不进来。
       Adapters__OneBot12__Host: "0.0.0.0"
       # 可选但建议设置：为空时不校验握手令牌，任何能访问 6700 的人都能连入。
-      Adapters__OneBot12__AccessToken: "${PULSEBOT_ONEBOT_TOKEN:-}"
+      Adapters__OneBot12__AccessToken: "${ANBOT_ONEBOT_TOKEN:-}"
 
       # ---------- 邮件适配器（默认关闭，按需取消注释）----------
       # Adapters__Email__Enabled: "true"
       # Adapters__Email__ImapHost: "imap.example.com"
       # Adapters__Email__SmtpHost: "smtp.example.com"
       # Adapters__Email__UserName: "bot@example.com"
-      # Adapters__Email__Password: "${PULSEBOT_EMAIL_PASSWORD:?}"
+      # Adapters__Email__Password: "${ANBOT_EMAIL_PASSWORD:?}"
       # Adapters__Email__FromAddress: "bot@example.com"
       # Adapters__Email__AllowedSenders__0: "you@example.com"
 
@@ -54,7 +54,7 @@ services:
 
     volumes:
       # 账号、刷新令牌、审计日志、权限名单与插件启停状态都在这个 SQLite 库里。
-      - pulsebot-data:/app/data
+      - anbot-data:/app/data
 
     healthcheck:
       # /health 仅在 Admin:Enabled = true 时存在；关闭后台时请同步移除本检查。
@@ -65,4 +65,4 @@ services:
       start_period: 20s
 
 volumes:
-  pulsebot-data:
+  anbot-data:

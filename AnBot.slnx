@@ -1,0 +1,20 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/AnBot.Adapter.Console/AnBot.Adapter.Console.csproj" />
+    <Project Path="src/AnBot.Adapter.Email/AnBot.Adapter.Email.csproj" />
+    <Project Path="src/AnBot.Adapter.OneBot/AnBot.Adapter.OneBot.csproj" />
+    <Project Path="src/AnBot.Admin.Api/AnBot.Admin.Api.csproj" />
+    <Project Path="src/AnBot.Admin.Infrastructure/AnBot.Admin.Infrastructure.csproj" />
+    <Project Path="src/AnBot.Admin.Shared/AnBot.Admin.Shared.csproj" />
+    <Project Path="src/AnBot.Cli/AnBot.Cli.csproj" />
+    <Project Path="src/AnBot.Core/AnBot.Core.csproj" />
+    <Project Path="src/AnBot.Plugins.Echo/AnBot.Plugins.Echo.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/AnBot.Adapter.Console.Tests/AnBot.Adapter.Console.Tests.csproj" />
+    <Project Path="tests/AnBot.Adapter.Email.Tests/AnBot.Adapter.Email.Tests.csproj" />
+    <Project Path="tests/AnBot.Admin.Tests/AnBot.Admin.Tests.csproj" />
+    <Project Path="tests/AnBot.Adapter.OneBot.Tests/AnBot.Adapter.OneBot.Tests.csproj" />
+    <Project Path="tests/AnBot.Core.Tests/AnBot.Core.Tests.csproj" />
+  </Folder>
+</Solution>

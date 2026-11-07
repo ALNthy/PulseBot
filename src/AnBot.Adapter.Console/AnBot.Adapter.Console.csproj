@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    控制台适配器：把标准输入/输出当作一个聊天平台。
+    与 OneBot 适配器并列，只依赖 Core 的公开契约，供本地联调与插件开发使用。
+  -->
+  <PropertyGroup>
+    <RootNamespace>AnBot.Adapter.Console</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\AnBot.Core\AnBot.Core.csproj" />
+  </ItemGroup>
+
+</Project>

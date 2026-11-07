@@ -1,0 +1,43 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- 宿主入口：组装 DI 容器，加载适配器与插件。 -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>AnBot.Cli</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\AnBot.Core\AnBot.Core.csproj" />
+    <ProjectReference Include="..\AnBot.Adapter.Console\AnBot.Adapter.Console.csproj" />
+    <ProjectReference Include="..\AnBot.Adapter.Email\AnBot.Adapter.Email.csproj" />
+    <ProjectReference Include="..\AnBot.Adapter.OneBot\AnBot.Adapter.OneBot.csproj" />
+    <ProjectReference Include="..\AnBot.Plugins.Echo\AnBot.Plugins.Echo.csproj" />
+    <ProjectReference Include="..\AnBot.Admin.Api\AnBot.Admin.Api.csproj" />
+  </ItemGroup>
+
+  <!--
+    后台 HTTP 服务：宿主进程内承载 ASP.NET Core 管道。
+    后台与机器人必须共用同一个 DI 容器，才能读到运行中的适配器、插件与调度器状态——
+    独立进程里 AddAnBot() 得到的是一个空内核，看不到任何真实运行数据。
+  -->
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <!--
+    不再单独引用 Microsoft.Extensions.Hosting / Logging.Console：
+    ASP.NET Core 共享框架（下面的 FrameworkReference）已包含全部 Microsoft.Extensions.* 组件，
+    重复引用会被 NuGet 标记为多余（NU1510）。
+  -->
+
+  <!--
+    配置文件随生成输出复制：普通 SDK 工程不像 Web SDK 那样自动复制 appsettings.json，
+    而 Host.CreateApplicationBuilder 的配置根目录是输出目录。
+  -->
+  <ItemGroup>
+    <None Update="appsettings.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+</Project>

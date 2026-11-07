@@ -1,4 +1,4 @@
-# PulseBot
+# AnBot
 
 事件驱动、**适配器 + 插件**架构的 C# 聊天机器人框架。基于 .NET 10 / C# 14。
 
@@ -21,22 +21,22 @@
 
 | 项目 | 状态 |
 | --- | --- |
-| `PulseBot.Core` | ✅ 已实现 — 事件分发、命令、权限、插件、交互会话、定时任务、消息段 |
-| `PulseBot.Cli` | ✅ 已实现 — 宿主入口、DI 装配、生命周期协调 |
-| `PulseBot.Adapter.Console` | ✅ 已实现 — 把标准输入输出当作聊天平台，用于本地联调与新适配器的参考实现 |
-| `PulseBot.Plugins.Echo` | ✅ 已实现 — 示例插件（单轮命令 + 多轮对话两种形态） |
-| `PulseBot.Adapter.OneBot` | ✅ 已实现 — OneBot 12 反向 WebSocket（消息、通知、请求事件） |
-| `PulseBot.Adapter.Email` | ✅ 已实现 — 自有 IMAP/SMTP 邮箱接入（纯文本、私聊、发件人白名单；默认关闭） |
-| `PulseBot.Admin.*` | ✅ 已实现 — 同进程后台：JWT 认证、账号与密码管理、登录限流、状态查询、插件启停、权限名单热更新、审计落库、SignalR 实时推送；Vue 前端待做 |
+| `AnBot.Core` | ✅ 已实现 — 事件分发、命令、权限、插件、交互会话、定时任务、消息段 |
+| `AnBot.Cli` | ✅ 已实现 — 宿主入口、DI 装配、生命周期协调 |
+| `AnBot.Adapter.Console` | ✅ 已实现 — 把标准输入输出当作聊天平台，用于本地联调与新适配器的参考实现 |
+| `AnBot.Plugins.Echo` | ✅ 已实现 — 示例插件（单轮命令 + 多轮对话两种形态） |
+| `AnBot.Adapter.OneBot` | ✅ 已实现 — OneBot 12 反向 WebSocket（消息、通知、请求事件） |
+| `AnBot.Adapter.Email` | ✅ 已实现 — 自有 IMAP/SMTP 邮箱接入（纯文本、私聊、发件人白名单；默认关闭） |
+| `AnBot.Admin.*` | ✅ 已实现 — 同进程后台：JWT 认证、账号与密码管理、登录限流、状态查询、插件启停、权限名单热更新、审计落库、SignalR 实时推送；Vue 前端待做 |
 
 测试：394 个（Core 193 + Console 12 + OneBot 29 + Email 26 + Admin 134，其中 18 个是后台 API 集成测试），`dotnet test` 全绿。
 
-> 也就是说，**开箱即可在控制台里跑通完整闭环**（发消息 → 事件管道 → 命令 → 回话）；接入真实平台用 `PulseBot.Adapter.OneBot`，它已实现 OneBot 12 反向 WebSocket 与消息、通知、请求三类事件的翻译；需要邮箱通道时用 `PulseBot.Adapter.Email`（默认关闭，配置后启用）。
+> 也就是说，**开箱即可在控制台里跑通完整闭环**（发消息 → 事件管道 → 命令 → 回话）；接入真实平台用 `AnBot.Adapter.OneBot`，它已实现 OneBot 12 反向 WebSocket 与消息、通知、请求三类事件的翻译；需要邮箱通道时用 `AnBot.Adapter.Email`（默认关闭，配置后启用）。
 
 ## 环境要求
 
 - [.NET 10 SDK](https://dotnet.microsoft.com/download)（目标框架 `net10.0`，语言版本 C# 14）
-- Node.js 仅在开发后台前端时需要（`PulseBot.Admin.Web` 尚未创建）
+- Node.js 仅在开发后台前端时需要（`AnBot.Admin.Web` 尚未创建）
 
 ```bash
 dotnet --version   # 应输出 10.x
@@ -48,8 +48,8 @@ dotnet --version   # 应输出 10.x
 
 ```bash
 git clone https://github.com/ALNthy/PulseBot.git
-cd PulseBot
-dotnet run --project src/PulseBot.Cli
+cd AnBot
+dotnet run --project src/AnBot.Cli
 ```
 
 宿主同时会在 `http://localhost:5187` 挂载后台管理接口（JWT 认证、监控、插件与权限写操作、实时推送，见[后台管理](#后台管理)）；只想跑机器人，把配置里的 `Admin:Enabled` 设为 `false` 即可。
@@ -94,9 +94,9 @@ cp .env.example .env
 
 | 变量 | 说明 |
 | --- | --- |
-| `PULSEBOT_SIGNING_KEY` | JWT 签名密钥，用 `openssl rand -base64 48` 生成（至少 32 字节） |
-| `PULSEBOT_ADMIN_PASSWORD` | 首次启动创建的引导管理员密码 |
-| `PULSEBOT_ONEBOT_TOKEN` | 可选；6700 端口对外开放时建议设置 |
+| `ANBOT_SIGNING_KEY` | JWT 签名密钥，用 `openssl rand -base64 48` 生成（至少 32 字节） |
+| `ANBOT_ADMIN_PASSWORD` | 首次启动创建的引导管理员密码 |
+| `ANBOT_ONEBOT_TOKEN` | 可选；6700 端口对外开放时建议设置 |
 
 `docker/.env` 已被 `.gitignore` 忽略，不会进入版本库。
 
@@ -121,8 +121,8 @@ docker compose up -d --build   # 升级：拉取源码后重建
 
 ### 4. 数据与配置
 
-- **数据持久化**：SQLite 库位于命名卷 `pulsebot-data` 的
-  `/app/data/pulsebot-admin.db`，包含账号、刷新令牌、审计日志、权限名单与插件启停状态；
+- **数据持久化**：SQLite 库位于命名卷 `anbot-data` 的
+  `/app/data/anbot-admin.db`，包含账号、刷新令牌、审计日志、权限名单与插件启停状态；
   `down` 不会删除它，只有 `down -v` 才会。
 - **配置覆盖**：与本地运行一致，环境变量用双下划线映射配置节，例如
   `Adapters__Email__Enabled=true`；邮箱参数见[邮件适配器使用指南](docs/EMAIL.md)。
@@ -143,7 +143,7 @@ docker compose up -d --build   # 升级：拉取源码后重建
 flowchart TD
     Platform(["聊天平台<br/>QQ / Telegram / 控制台"])
 
-    subgraph Core["PulseBot.Core"]
+    subgraph Core["AnBot.Core"]
         direction TB
         Adapter["IAdapter<br/>原始报文 → MessageEvent"]
         Publisher["IEventPublisher<br/>装配 ReplyChannel"]
@@ -187,11 +187,11 @@ flowchart TD
 
 **⑤ 没装中间件时走零分配快路径。** 管道在构造期一次性绑定为委托链，运行期不再碰容器；既没装中间件又没有匹配处理器时，分发以 `ValueTask.CompletedTask` 直接返回。
 
-完整实现见 [Dispatching/](src/PulseBot.Core/Dispatching/)、[Permissions/AccessControlMiddleware.cs](src/PulseBot.Core/Permissions/AccessControlMiddleware.cs)、[Sessions/SessionPromptMiddleware.cs](src/PulseBot.Core/Sessions/SessionPromptMiddleware.cs)。
+完整实现见 [Dispatching/](src/AnBot.Core/Dispatching/)、[Permissions/AccessControlMiddleware.cs](src/AnBot.Core/Permissions/AccessControlMiddleware.cs)、[Sessions/SessionPromptMiddleware.cs](src/AnBot.Core/Sessions/SessionPromptMiddleware.cs)。
 
 ## 搭一个宿主
 
-框架的全部能力都由 DI 容器拼装，宿主入口只负责「登记」。以下是 Cli 的完整装配（见 [`Program.cs`](src/PulseBot.Cli/Program.cs)），搭自己的宿主时逐段照抄即可：
+框架的全部能力都由 DI 容器拼装，宿主入口只负责「登记」。以下是 Cli 的完整装配（见 [`Program.cs`](src/AnBot.Cli/Program.cs)），搭自己的宿主时逐段照抄即可：
 
 ```csharp
 WebApplicationBuilder builder = WebApplication.CreateBuilder(new WebApplicationOptions
@@ -201,7 +201,7 @@ WebApplicationBuilder builder = WebApplication.CreateBuilder(new WebApplicationO
 });
 
 // 内核：事件、分发、命令、插件、会话、权限、调度
-builder.Services.AddPulseBot();
+builder.Services.AddAnBot();
 
 // 配置绑定：没有这一步，appsettings.json 里对应节的内容不会生效
 builder.Services.Configure<PermissionOptions>(builder.Configuration.GetSection(PermissionOptions.SectionName));
@@ -225,7 +225,7 @@ builder.Services.AddAdminApi();
 
 // 宿主服务：把插件与适配器的启停、会话回收、任务调度挂到宿主生命周期上。
 // 调度服务注册在最后 → 关闭时最先停止，不再拉起新一轮任务。
-builder.Services.AddHostedService<PulseBotLifecycleService>();
+builder.Services.AddHostedService<AnBotLifecycleService>();
 builder.Services.AddHostedService<SessionCleanupService>();
 builder.Services.AddHostedService<SchedulerHostedService>();
 
@@ -237,18 +237,18 @@ await app.RunAsync();
 四点值得说明：
 
 - **`ContentRootPath = AppContext.BaseDirectory`** —— 默认取当前工作目录，从仓库根执行 `dotnet run` 时就会去仓库根找 `appsettings.json`（不存在），配置被静默忽略。以可执行文件所在目录为准，配置文件才能稳定随程序一起被找到。
-- **用 `WebApplication` 而不是 `Host`** —— 后台管理要在宿主进程内承载 HTTP 管道，并且**必须与机器人共用同一个 DI 容器**：独立进程里 `AddPulseBot()` 得到的是一个空内核，看不到任何运行中的适配器与插件。只跑机器人、不需要后台时，用 `Host.CreateApplicationBuilder` 即可。
-- **Core 不含后台服务** —— `PulseBot.Core` 不引用 Hosting 抽象，会话清理与任务调度都只提供「一轮即返回」的逻辑入口（`ISessionStore.CleanupExpiredAsync`、`Scheduler.RunDueTasksAsync`），由宿主的 `BackgroundService` 决定何时调用。可直接照搬 [`SessionCleanupService`](src/PulseBot.Cli/SessionCleanupService.cs) 与 [`SchedulerHostedService`](src/PulseBot.Cli/SchedulerHostedService.cs)。
+- **用 `WebApplication` 而不是 `Host`** —— 后台管理要在宿主进程内承载 HTTP 管道，并且**必须与机器人共用同一个 DI 容器**：独立进程里 `AddAnBot()` 得到的是一个空内核，看不到任何运行中的适配器与插件。只跑机器人、不需要后台时，用 `Host.CreateApplicationBuilder` 即可。
+- **Core 不含后台服务** —— `AnBot.Core` 不引用 Hosting 抽象，会话清理与任务调度都只提供「一轮即返回」的逻辑入口（`ISessionStore.CleanupExpiredAsync`、`Scheduler.RunDueTasksAsync`），由宿主的 `BackgroundService` 决定何时调用。可直接照搬 [`SessionCleanupService`](src/AnBot.Cli/SessionCleanupService.cs) 与 [`SchedulerHostedService`](src/AnBot.Cli/SchedulerHostedService.cs)。
 - **插件与适配器都是显式登记** —— 项目引用 + DI 登记，不做运行时 DLL 扫描：引用关系由编译器校验，部署时也不会有「插件目录里少了一个 dll」这类运行期故障。
 
 ## 接入 OneBot 12
 
-`PulseBot.Adapter.OneBot` 实现了 [OneBot 12](https://12.onebot.dev/) 的**反向 WebSocket**：由 PulseBot 监听端口，OneBot 实现端（NapCat、Lagrange 等）主动连入。同一条连接双向通行——实现端推事件，PulseBot 发动作请求。
+`AnBot.Adapter.OneBot` 实现了 [OneBot 12](https://12.onebot.dev/) 的**反向 WebSocket**：由 AnBot 监听端口，OneBot 实现端（NapCat、Lagrange 等）主动连入。同一条连接双向通行——实现端推事件，AnBot 发动作请求。
 
-### 1. 启动 PulseBot
+### 1. 启动 AnBot
 
 ```bash
-dotnet run --project src/PulseBot.Cli
+dotnet run --project src/AnBot.Cli
 ```
 
 默认监听 `http://localhost:6700/onebot/v12/`，启动日志里会打印实际地址。
@@ -260,7 +260,7 @@ dotnet run --project src/PulseBot.Cli
 | 项 | 值 |
 | --- | --- |
 | 地址 | `ws://localhost:6700/onebot/v12/` |
-| 访问令牌 | 与 `Adapters:OneBot12:AccessToken` 一致；PulseBot 侧留空则实现端也不必填 |
+| 访问令牌 | 与 `Adapters:OneBot12:AccessToken` 一致；AnBot 侧留空则实现端也不必填 |
 
 实现端发送的 `Sec-WebSocket-Protocol: 12.<实现名>` 会在握手时被原样回显。
 
@@ -291,7 +291,7 @@ Vue 前端尚未创建，接口直接用 `curl` 验证即可。
 
 ### 启用
 
-后台由 `Admin` 配置节控制，[`appsettings.json`](src/PulseBot.Cli/appsettings.json) 里的默认值可以直接跑起来。设为 `Enabled: false` 则完全不挂载：不开端口、不建数据库文件，宿主退化成纯机器人进程。
+后台由 `Admin` 配置节控制，[`appsettings.json`](src/AnBot.Cli/appsettings.json) 里的默认值可以直接跑起来。设为 `Enabled: false` 则完全不挂载：不开端口、不建数据库文件，宿主退化成纯机器人进程。
 
 `Auth:SigningKey` 是 JWT 的 HMAC-SHA256 密钥，**必须**替换掉示例值，且不少于 32 字节——配置非法时宿主在**启动期**就失败，而不是退化成一个没有认证的后台：
 
@@ -382,7 +382,7 @@ curl -X PUT http://localhost:5187/admin/api/accounts/me/password \
 
 ```bash
 # 停用插件（typeName 取自 GET /plugins）
-curl -X PUT http://localhost:5187/admin/api/plugins/PulseBot.Plugins.Echo.EchoPlugin/state \
+curl -X PUT http://localhost:5187/admin/api/plugins/AnBot.Plugins.Echo.EchoPlugin/state \
   -H "Authorization: Bearer <accessToken>" -H "Content-Type: application/json" -d '{"enabled":false}'
 
 # 把用户加入黑名单（values 传空数组即清空该名单）
@@ -498,8 +498,8 @@ curl -X PUT http://localhost:5187/admin/api/access-policy/user-blacklist \
 | `SmtpHost` / `SmtpPort` | 空 / `587` | 发件服务器与端口 |
 | `SmtpSecurity` | `"StartTls"` | 同 `ImapSecurity` |
 | `UserName` / `Password` | 空 | IMAP 与 SMTP 共用的登录凭据；密码建议用环境变量 `Adapters__Email__Password` 注入 |
-| `FromAddress` / `FromDisplayName` | 空 / `"PulseBot"` | 发件地址与展示名；`FromAddress` 同时用于忽略自发邮件 |
-| `Subject` | `"PulseBot"` | 主动发送时的主题；回复自动加 `Re:` 前缀 |
+| `FromAddress` / `FromDisplayName` | 空 / `"AnBot"` | 发件地址与展示名；`FromAddress` 同时用于忽略自发邮件 |
+| `Subject` | `"AnBot"` | 主动发送时的主题；回复自动加 `Re:` 前缀 |
 | `AllowedSenders` | `[]` | 允许交互的发件人地址（不区分大小写） |
 | `AllowedDomains` | `[]` | 允许交互的发件人域名；与 `AllowedSenders` 取并集，二者都为空时适配器拒绝启动 |
 
@@ -513,9 +513,9 @@ curl -X PUT http://localhost:5187/admin/api/access-policy/user-blacklist \
 | --- | --- | --- |
 | `Enabled` | `true` | 是否挂载后台；`false` 则不开端口、不建数据库文件 |
 | `Url` | `"http://localhost:5187"` | 监听地址 |
-| `DatabasePath` | `"pulsebot-admin.db"` | SQLite 文件；相对路径以可执行文件所在目录为基准 |
+| `DatabasePath` | `"anbot-admin.db"` | SQLite 文件；相对路径以可执行文件所在目录为基准 |
 | `Auth:SigningKey` | 空 | JWT 签名密钥，**启用后台时必填**且不少于 32 字节 |
-| `Auth:Issuer` / `Auth:Audience` | `"pulsebot-admin"` | 令牌的 `iss` / `aud` 声明 |
+| `Auth:Issuer` / `Auth:Audience` | `"anbot-admin"` | 令牌的 `iss` / `aud` 声明 |
 | `Auth:AccessTokenLifetime` | `"00:30:00"` | 访问令牌有效期 |
 | `Auth:RefreshTokenLifetime` | `"7.00:00:00"` | 刷新令牌有效期 |
 | `Auth:BootstrapUser` | `"admin"` | 引导账号用户名；仅在账号表为空时创建 |
@@ -529,21 +529,21 @@ curl -X PUT http://localhost:5187/admin/api/access-policy/user-blacklist \
 
 ```
 src/
-  PulseBot.Core/                 内核：事件、分发、命令、权限、插件、会话、调度、消息段
-  PulseBot.Cli/                  宿主入口：DI 配置、加载适配器与插件
-  PulseBot.Adapter.Console/      控制台适配器（参考实现）
-  PulseBot.Adapter.Email/        邮件适配器（IMAP 收件、SMTP 发件，纯文本首版）
-  PulseBot.Adapter.OneBot/       OneBot 适配器，当前实现了 12 版（反向 WebSocket）
-  PulseBot.Plugins.Echo/         示例插件
-  PulseBot.Admin.Shared/         后台共享契约：配置、DTO、枚举（零依赖）
-  PulseBot.Admin.Infrastructure/ 后台基础设施：EF Core、认证与令牌、账号服务、运行时控制、登录限流、审计
-  PulseBot.Admin.Api/            后台 HTTP 层：REST 端点、JWT 认证、SignalR Hub 与实时推送（类库，由 Cli 挂载）
+  AnBot.Core/                 内核：事件、分发、命令、权限、插件、会话、调度、消息段
+  AnBot.Cli/                  宿主入口：DI 配置、加载适配器与插件
+  AnBot.Adapter.Console/      控制台适配器（参考实现）
+  AnBot.Adapter.Email/        邮件适配器（IMAP 收件、SMTP 发件，纯文本首版）
+  AnBot.Adapter.OneBot/       OneBot 适配器，当前实现了 12 版（反向 WebSocket）
+  AnBot.Plugins.Echo/         示例插件
+  AnBot.Admin.Shared/         后台共享契约：配置、DTO、枚举（零依赖）
+  AnBot.Admin.Infrastructure/ 后台基础设施：EF Core、认证与令牌、账号服务、运行时控制、登录限流、审计
+  AnBot.Admin.Api/            后台 HTTP 层：REST 端点、JWT 认证、SignalR Hub 与实时推送（类库，由 Cli 挂载）
 tests/
-  PulseBot.Core.Tests/
-  PulseBot.Adapter.Console.Tests/
-  PulseBot.Adapter.Email.Tests/
-  PulseBot.Adapter.OneBot.Tests/
-  PulseBot.Admin.Tests/
+  AnBot.Core.Tests/
+  AnBot.Adapter.Console.Tests/
+  AnBot.Adapter.Email.Tests/
+  AnBot.Adapter.OneBot.Tests/
+  AnBot.Admin.Tests/
 ```
 
 ## 写一个插件
@@ -552,8 +552,8 @@ tests/
 
 ```csharp
 using Microsoft.Extensions.Logging;
-using PulseBot.Core.Commands;
-using PulseBot.Core.Plugins;
+using AnBot.Core.Commands;
+using AnBot.Core.Plugins;
 
 [PluginMetadata("Weather", Version = "0.1.0", Description = "示例：查询天气")]
 public sealed class WeatherPlugin : IPlugin
@@ -577,7 +577,7 @@ public sealed class WeatherPlugin : IPlugin
 builder.Services.AddPlugin<WeatherPlugin>();
 ```
 
-多轮对话（提问 → 用户回答 → 处理回答）见[多轮对话与跨命令状态](#多轮对话与跨命令状态)一节，可运行的完整示例是 [`EchoPlugin`](src/PulseBot.Plugins.Echo/EchoPlugin.cs) 的 `/注册` 与 `/我是谁`。
+多轮对话（提问 → 用户回答 → 处理回答）见[多轮对话与跨命令状态](#多轮对话与跨命令状态)一节，可运行的完整示例是 [`EchoPlugin`](src/AnBot.Plugins.Echo/EchoPlugin.cs) 的 `/注册` 与 `/我是谁`。
 
 ## 写一个命令
 
@@ -647,7 +647,7 @@ public ValueTask MuteAsync(CommandContext context, CancellationToken cancellatio
 
 ## 多轮对话与跨命令状态
 
-会话的粒度是**（会话 + 用户）**：同一群里每人一份互不干扰，同一个人在私聊与不同群里也彼此隔离。完整示例见 [`EchoPlugin`](src/PulseBot.Plugins.Echo/EchoPlugin.cs) 的 `/注册` 与 `/我是谁`。
+会话的粒度是**（会话 + 用户）**：同一群里每人一份互不干扰，同一个人在私聊与不同群里也彼此隔离。完整示例见 [`EchoPlugin`](src/AnBot.Plugins.Echo/EchoPlugin.cs) 的 `/注册` 与 `/我是谁`。
 
 **发起提问**——顺序有意如此：先把问句发出去，再登记等待；反过来会在发送失败时留下一个永远等不到回答的等待态。
 
@@ -706,7 +706,7 @@ public sealed class DailyReportTask(ILogger<DailyReportTask> logger) : ISchedule
 builder.Services.AddScheduledTask<DailyReportTask>();
 ```
 
-再配一个后台服务按 `SchedulingOptions.PollInterval` 驱动 `Scheduler` —— Core 不引用 Hosting 抽象、不自己起定时器，可直接照搬 [`SchedulerHostedService`](src/PulseBot.Cli/SchedulerHostedService.cs)。
+再配一个后台服务按 `SchedulingOptions.PollInterval` 驱动 `Scheduler` —— Core 不引用 Hosting 抽象、不自己起定时器，可直接照搬 [`SchedulerHostedService`](src/AnBot.Cli/SchedulerHostedService.cs)。
 
 ## 写一个中间件
 
@@ -722,8 +722,8 @@ builder.Services.AddScheduledTask<DailyReportTask>();
 以出站为例，给所有消息加前缀：
 
 ```csharp
-using PulseBot.Core.Adapters;
-using PulseBot.Core.Messages;
+using AnBot.Core.Adapters;
+using AnBot.Core.Messages;
 
 public sealed class PrefixMiddleware : IOutboundMiddleware
 {
@@ -732,7 +732,7 @@ public sealed class PrefixMiddleware : IOutboundMiddleware
         OutboundMiddlewareNext next,
         CancellationToken cancellationToken)
         // 改写靠 with 表达式：新实例会传给更内层的中间件与适配器。
-        => next(message with { Message = Message.Text($"[PulseBot] {message.Message}") }, cancellationToken);
+        => next(message with { Message = Message.Text($"[AnBot] {message.Message}") }, cancellationToken);
 }
 ```
 
@@ -774,19 +774,19 @@ builder.Services.AddEventHandler<MessageEvent, ChatLogHandler>();
 ## 常用命令
 
 ```bash
-dotnet build PulseBot.slnx                     # 构建（可空警告是错误级）
-dotnet test PulseBot.slnx                      # 全量测试
-dotnet test PulseBot.slnx --filter "Category=Unit"
-dotnet test PulseBot.slnx --filter "Category=Integration"   # 后台 API 集成测试
-dotnet run --project src/PulseBot.Cli          # 跑起来
-dotnet format PulseBot.slnx                    # 提交前格式化
+dotnet build AnBot.slnx                     # 构建（可空警告是错误级）
+dotnet test AnBot.slnx                      # 全量测试
+dotnet test AnBot.slnx --filter "Category=Unit"
+dotnet test AnBot.slnx --filter "Category=Integration"   # 后台 API 集成测试
+dotnet run --project src/AnBot.Cli          # 跑起来
+dotnet format AnBot.slnx                    # 提交前格式化
 ```
 
 ## 架构约束
 
 这几条是硬约束，改动时不能绕开：
 
-- `PulseBot.Core` **不得**引用任何 `Adapter.*`、`Plugins.*`、`Admin.*` 项目，只出契约。
+- `AnBot.Core` **不得**引用任何 `Adapter.*`、`Plugins.*`、`Admin.*` 项目，只出契约。
 - 插件必须实现 `IPlugin`，禁止直接调用 Core 内部服务；插件之间不得互相引用。
 - 所有事件统一实现 `IEvent`，由 `EventDispatcher` 分发；插件不得处理原始平台消息。
 - 热路径（事件分发、命令匹配）禁止未缓存的反射。
@@ -813,7 +813,7 @@ Core 的地基已完整，两个里程碑已经交付：**接入真实平台**�
 ### 生产化
 
 - **持久化与多实例** — 会话、调度执行历史与分布式锁目前均为内存实现（单机可用）。权限名单由后台负责持久化（落 SQLite，启动时装进内存快照、改动立即生效），但多实例之间仍不共享；跨实例通知目前也是进程内的（后台与内核同进程），尚未引入 Redis。
-- **后台管理的后续** — Vue 前端（`PulseBot.Admin.Web`）待做——后端的账号、名单、插件启停与实时推送四条链路都已就绪并端到端验证，唯独还没有可用的界面；后台数据库的 EF 迁移待补（当前用 `EnsureCreated` 建库，新增表后旧库需要删除重建，仅适合开发期）；通用配置热重载未纳入（端口、监听地址这类结构性配置改了也无法生效，见「配置项一览」的说明）。
+- **后台管理的后续** — Vue 前端（`AnBot.Admin.Web`）待做——后端的账号、名单、插件启停与实时推送四条链路都已就绪并端到端验证，唯独还没有可用的界面；后台数据库的 EF 迁移待补（当前用 `EnsureCreated` 建库，新增表后旧库需要删除重建，仅适合开发期）；通用配置热重载未纳入（端口、监听地址这类结构性配置改了也无法生效，见「配置项一览」的说明）。
 - **可观测性** — 目前只有结构化日志：指标（Prometheus）与分布式追踪（OpenTelemetry）均未接入；健康检查只有一个手写的 `/health`（恒返回 healthy），还没有 `/ready`，也未接入 .NET 的健康检查框架——编排系统无法区分「进程活着」与「依赖就绪」。
 - **测试基础设施** — 现有 5 个测试项目（394 个测试）：Core、三个适配器（Console/OneBot/Email）与 Admin 服务层是单元/管道测试，跑得快、无外部依赖；后台 API 另有 18 个进程内集成测试（`TestServer` + 临时 SQLite），覆盖路由、JWT 认证、模型绑定与统一错误形状。Redis 与多实例路径仍无集成测试覆盖，Testcontainers 尚未引入；CI 已由 GitHub Actions 在 push/PR 时执行构建、全量测试与格式检查。
 

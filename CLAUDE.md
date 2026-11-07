@@ -1,4 +1,4 @@
-# CLAUDE.md — PulseBot 开发指南
+# CLAUDE.md — AnBot 开发指南
 
 减少常见 LLM 编码错误的行为准则。可按需与项目特定指令合并。
 
@@ -65,13 +65,13 @@
 **如果出现以下情况，说明这些准则正在起作用：** diff 中不必要的改动更少，因过度复杂而重写更少，以及澄清性问题出现在实现之前而不是犯错之后。
 
 ## 项目概览
-PulseBot 是一个 C# 版、事件驱动的聊天机器人框架。基于 **.NET 10 (LTS)** + Microsoft.Extensions.DependencyInjection，
+AnBot 是一个 C# 版、事件驱动的聊天机器人框架。基于 **.NET 10 (LTS)** + Microsoft.Extensions.DependencyInjection，
 采用“适配器 + 插件”架构，支持多平台事件接入、后台管理、热重载与水平扩展。
 
 ## 架构约束（最高优先级）
 **冲突裁决：** 上方通用准则与本文件的项目约束冲突时，以项目约束为准；实现范围以用户当次请求为准。架构歧义必须先问再动手；实现细节自行决定，并在回复中说明所作假设。
 
-- `PulseBot.Core` 不得引用任何 `Adapter.*`、`Plugins.*`、`Admin.*` 项目。
+- `AnBot.Core` 不得引用任何 `Adapter.*`、`Plugins.*`、`Admin.*` 项目。
 - 插件必须实现 `IPlugin` 接口，禁止直接调用 Core 内部服务。
 - 所有事件统一实现 `IEvent`，由 `EventDispatcher` 分发，插件不得处理原始消息。
 - 后台管理通过 `IManagementService` 与核心交互，不得侵入消息处理热路径。
@@ -80,14 +80,14 @@ PulseBot 是一个 C# 版、事件驱动的聊天机器人框架。基于 **.NET
 - 目标框架统一为 `net10.0`，语言版本使用 C# 14。
 
 ## 解决方案结构
-- `src/PulseBot.Core/` — 事件、插件管理、适配器接口、命令分发、会话、权限、中间件
-- `src/PulseBot.Adapter.OneBot/` — OneBot 协议实现
-- `src/PulseBot.Cli/` — 宿主入口，DI 配置，加载适配器与插件
-- `src/PulseBot.Plugins.*/` — 可独立分发的插件项目
-- `src/PulseBot.Admin.Shared/` — 后台共享 DTO、枚举
-- `src/PulseBot.Admin.Infrastructure/` — EF Core 10、仓储、HybridCache
-- `src/PulseBot.Admin.Api/` — 后台 REST API（类库，由 `PulseBot.Cli` 同进程挂载）
-- `src/PulseBot.Admin.Web/` — Vue3 + TypeScript 前端（独立构建）
+- `src/AnBot.Core/` — 事件、插件管理、适配器接口、命令分发、会话、权限、中间件
+- `src/AnBot.Adapter.OneBot/` — OneBot 协议实现
+- `src/AnBot.Cli/` — 宿主入口，DI 配置，加载适配器与插件
+- `src/AnBot.Plugins.*/` — 可独立分发的插件项目
+- `src/AnBot.Admin.Shared/` — 后台共享 DTO、枚举
+- `src/AnBot.Admin.Infrastructure/` — EF Core 10、仓储、HybridCache
+- `src/AnBot.Admin.Api/` — 后台 REST API（类库，由 `AnBot.Cli` 同进程挂载）
+- `src/AnBot.Admin.Web/` — Vue3 + TypeScript 前端（独立构建）
 - `tests/` — 对应测试项目
 
 ## 常用命令
@@ -96,9 +96,9 @@ dotnet build                     # 必须通过才算完成
 dotnet test                      # 全量测试
 dotnet test --filter "Category=Unit"  # 快速单元测试
 dotnet test --filter "Category=Integration"  # 后台 API 集成测试
-dotnet run --project src/PulseBot.Cli   # 宿主；后台管理随它一同启动
+dotnet run --project src/AnBot.Cli   # 宿主；后台管理随它一同启动
 cd docker && docker compose up -d --build   # 容器部署（首次先 cp .env.example .env）
-cd src/PulseBot.Admin.Web && npm run dev
+cd src/AnBot.Admin.Web && npm run dev
 dotnet format                    # 提交前格式化
 ```
 
@@ -161,7 +161,7 @@ dotnet format                    # 提交前格式化
 - 任务实现 `IScheduledTask`，由调度器统一管理，可在后台查看执行历史。
 
 ## 后台管理
-- `PulseBot.Admin.Api` 由 `PulseBot.Cli` 同进程挂载（两者共用同一个 DI 容器），通过 `IManagementService` 调用核心。
+- `AnBot.Admin.Api` 由 `AnBot.Cli` 同进程挂载（两者共用同一个 DI 容器），通过 `IManagementService` 调用核心。
 - REST 接口使用 MVC 控制器（`ControllerBase` + `[ApiController]`），在类库中通过 `AddApplicationPart` 显式注册；错误响应统一为 `ApiError`。
 - 实时推送使用 SignalR，前端通过 WebSocket 接收日志、事件、状态。
 - 轻量级实时流可使用 `TypedResults.ServerSentEvents`。

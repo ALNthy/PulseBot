@@ -1,6 +1,6 @@
-# PulseBot 使用教程
+# AnBot 使用教程
 
-这份教程带你从零走完 PulseBot 的两条主线：**把机器人跑起来**（上篇）和**给它写插件**（下篇）。
+这份教程带你从零走完 AnBot 的两条主线：**把机器人跑起来**（上篇）和**给它写插件**（下篇）。
 全部示例都在本仓库上验证过，命令可以直接复制执行。
 
 - **上篇 · 部署与运维**（第 1–6 章）：适合想先把机器人跑起来、接入真实平台、用上后台管理的人。
@@ -18,7 +18,7 @@
 
 ### 1. 准备环境
 
-需要 **.NET 10 SDK**（PulseBot 全程基于 .NET 10 与 C# 14，无法在 .NET 8/9 上运行）。
+需要 **.NET 10 SDK**（AnBot 全程基于 .NET 10 与 C# 14，无法在 .NET 8/9 上运行）。
 
 ```bash
 dotnet --version        # 应输出 10.x
@@ -37,12 +37,12 @@ dotnet test             # 350 个测试全绿（Core 193 + Console 12 + OneBot 2
 
 | 目录 | 作用 |
 | --- | --- |
-| `src/PulseBot.Core/` | 内核：事件、插件、命令、会话、权限、定时任务、中间件 |
-| `src/PulseBot.Cli/` | **宿主入口**——你要运行的就是它 |
-| `src/PulseBot.Adapter.Console/` | 控制台适配器：把标准输入输出当作聊天平台 |
-| `src/PulseBot.Adapter.OneBot/` | OneBot 12 适配器：接入真实平台 |
-| `src/PulseBot.Plugins.Echo/` | 示例插件，也是写新插件时最好的模板 |
-| `src/PulseBot.Admin.*/` | 后台管理（API + 数据层 + 共享 DTO） |
+| `src/AnBot.Core/` | 内核：事件、插件、命令、会话、权限、定时任务、中间件 |
+| `src/AnBot.Cli/` | **宿主入口**——你要运行的就是它 |
+| `src/AnBot.Adapter.Console/` | 控制台适配器：把标准输入输出当作聊天平台 |
+| `src/AnBot.Adapter.OneBot/` | OneBot 12 适配器：接入真实平台 |
+| `src/AnBot.Plugins.Echo/` | 示例插件，也是写新插件时最好的模板 |
+| `src/AnBot.Admin.*/` | 后台管理（API + 数据层 + 共享 DTO） |
 | `tests/` | 对应各项目的测试 |
 
 ### 2. 第一次对话：控制台适配器
@@ -50,7 +50,7 @@ dotnet test             # 350 个测试全绿（Core 193 + Console 12 + OneBot 2
 宿主自带控制台适配器，**不接任何平台就能跑通完整闭环**。
 
 ```bash
-dotnet run --project src/PulseBot.Cli
+dotnet run --project src/AnBot.Cli
 ```
 
 启动后会看到类似输出：
@@ -122,7 +122,7 @@ dotnet run --project src/PulseBot.Cli
 
 ### 3. 配置文件
 
-宿主的配置文件是 `src/PulseBot.Cli/appsettings.json`，随构建复制到可执行文件目录。
+宿主的配置文件是 `src/AnBot.Cli/appsettings.json`，随构建复制到可执行文件目录。
 
 > ⚠ **内容根 = 可执行文件所在目录**。程序以 `AppContext.BaseDirectory` 作为内容根，
 > 所以无论你从哪个目录运行 `dotnet run`，读到的都是 `bin/.../appsettings.json`。
@@ -193,13 +193,13 @@ export Admin__Enabled=false
 
 ### 4. 接入真实平台：OneBot 12
 
-PulseBot 的 OneBot 12 适配器使用**反向 WebSocket**：**本进程监听端口，OneBot 实现端（如 NapCat、Lagrange）主动连入**。
+AnBot 的 OneBot 12 适配器使用**反向 WebSocket**：**本进程监听端口，OneBot 实现端（如 NapCat、Lagrange）主动连入**。
 
 1. 保持 `Adapters:OneBot12` 的默认配置（监听 `localhost:6700`，路径 `/onebot/v12/`）。
 2. 在你的 OneBot 实现里配置反向 WebSocket：
    - 地址：`ws://localhost:6700/onebot/v12/`
    - 若设置了 `AccessToken`，OneBot 端需带同样的令牌（放在 `Authorization: Bearer <token>` 头里）。
-3. 启动 PulseBot，再启动 OneBot 实现端。连接建立后日志会出现连接建立记录，之后群里的消息就会进入管道。
+3. 启动 AnBot，再启动 OneBot 实现端。连接建立后日志会出现连接建立记录，之后群里的消息就会进入管道。
 
 适配器已翻译三类事件：**消息事件、通知事件、请求事件**。插件只面对平台无关的 `MessageEvent`，
 换成别的平台（甚至多个平台并存）插件代码都不用改。
@@ -226,7 +226,7 @@ PulseBot 的 OneBot 12 适配器使用**反向 WebSocket**：**本进程监听�
 
 ```
 用户名：admin
-密码：pulsebot-dev        ← Admin:Auth:BootstrapPassword
+密码：anbot-dev        ← Admin:Auth:BootstrapPassword
 ```
 
 > ⚠ **登录后第一件事就是改密码**，并把 `BootstrapPassword` 从配置里删掉。
@@ -303,11 +303,11 @@ curl -s -m 20 "$HUB?id=$CONN" -H "$AUTH" | tr '\036' '\n'
 | 现象 | 常见原因 |
 | --- | --- |
 | 改了 `appsettings.json` 不生效 | 读的是可执行文件目录下的副本，重新构建；或者忘了重启（配置是启动快照） |
-| 后台报「表不存在 / no such table」 | 旧数据库是在加表之前建的。删掉 `pulsebot-admin.db` 重启会重建（**开发期过渡方案，会丢数据**） |
+| 后台报「表不存在 / no such table」 | 旧数据库是在加表之前建的。删掉 `anbot-admin.db` 重启会重建（**开发期过渡方案，会丢数据**） |
 | SignalR 一条推送都收不到 | 漏了第 5 章的**第 3 步握手**；或令牌没带上（Hub 需要 `Authorization`） |
 | 插件命令没反应 | 命令被后台停用了？看启动日志里的「停用插件 N 个」 |
 | 中文日志乱码（Windows 控制台 / 重定向） | 控制台输出是 GBK，脚本处理前先 `iconv -f GBK -t UTF-8 -c` |
-| `dotnet test` 没重建 Cli | 测试项目不依赖 Cli，改完 Core 要显式 `dotnet build src/PulseBot.Cli` 才能验证 |
+| `dotnet test` 没重建 Cli | 测试项目不依赖 Cli，改完 Core 要显式 `dotnet build src/AnBot.Cli` 才能验证 |
 | 推 GitHub 连接超时 | TCP 层不通，先确认代理是否开着，别误判成凭据问题 |
 
 ---
@@ -321,17 +321,17 @@ curl -s -m 20 "$HUB?id=$CONN" -H "$AUTH" | tr '\036' '\n'
 
 #### 7.1 建项目
 
-在 `src/` 下新建插件项目 `PulseBot.Plugins.GroupHelper/PulseBot.Plugins.GroupHelper.csproj`：
+在 `src/` 下新建插件项目 `AnBot.Plugins.GroupHelper/AnBot.Plugins.GroupHelper.csproj`：
 
 ```xml
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <RootNamespace>PulseBot.Plugins.GroupHelper</RootNamespace>
+    <RootNamespace>AnBot.Plugins.GroupHelper</RootNamespace>
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\PulseBot.Core\PulseBot.Core.csproj" />
+    <ProjectReference Include="..\AnBot.Core\AnBot.Core.csproj" />
   </ItemGroup>
 
 </Project>
@@ -343,10 +343,10 @@ curl -s -m 20 "$HUB?id=$CONN" -H "$AUTH" | tr '\036' '\n'
 #### 7.2 最小插件
 
 ```csharp
-using PulseBot.Core.Commands;
-using PulseBot.Core.Plugins;
+using AnBot.Core.Commands;
+using AnBot.Core.Plugins;
 
-namespace PulseBot.Plugins.GroupHelper;
+namespace AnBot.Plugins.GroupHelper;
 
 /// <summary>群助手：从一条 ping 命令开始。</summary>
 [PluginMetadata("GroupHelper", Version = "0.1.0", Description = "群助手示例插件。")]
@@ -372,15 +372,15 @@ public sealed class GroupHelperPlugin : IPlugin
 插件是**编译期显式登记**的，不做运行时 DLL 扫描——引用关系由编译器校验，
 部署时不会出现「插件目录少了一个 dll」这类运行期故障。
 
-在 `src/PulseBot.Cli/PulseBot.Cli.csproj` 里加项目引用，然后在 `Program.cs` 里登记：
+在 `src/AnBot.Cli/AnBot.Cli.csproj` 里加项目引用，然后在 `Program.cs` 里登记：
 
 ```csharp
-using PulseBot.Plugins.GroupHelper;
+using AnBot.Plugins.GroupHelper;
 
 builder.Services.AddPlugin<GroupHelperPlugin>();
 ```
 
-运行 `dotnet run --project src/PulseBot.Cli`，输入 `/ping` 就会回 `pong`。
+运行 `dotnet run --project src/AnBot.Cli`，输入 `/ping` 就会回 `pong`。
 
 > `AddPlugin<T>` 只把插件注册成 `IPlugin` 单例，**不额外注册 `T` 自身**——
 > 双注册会创建两个实例，破坏「插件是容器单例」的前提。插件之间通信请走事件总线或自有服务接口。
@@ -567,9 +567,9 @@ session.Remove(NicknameStateKey);                          // 删
 
 ```csharp
 using System.Collections.Concurrent;
-using PulseBot.Core.Messages;
+using AnBot.Core.Messages;
 
-namespace PulseBot.Plugins.GroupHelper;
+namespace AnBot.Plugins.GroupHelper;
 
 /// <summary>一条报名记录。</summary>
 public sealed record RosterEntry(string UserId, string Nickname);
@@ -702,9 +702,9 @@ await sender.SendAsync(target, Message.Text("跨会话发送"), cancellationToke
 ```csharp
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using PulseBot.Core.Adapters;
-using PulseBot.Core.Messages;
-using PulseBot.Core.Scheduling;
+using AnBot.Core.Adapters;
+using AnBot.Core.Messages;
+using AnBot.Core.Scheduling;
 
 /// <summary>每天早八点把报名人数播报回群里。</summary>
 public sealed class DailyRosterTask : IScheduledTask
@@ -775,8 +775,8 @@ Cron 是标准 5 段格式（分 时 日 月 周）。**时区建议显式指定
 
 ```csharp
 using Microsoft.Extensions.DependencyInjection;
-using PulseBot.Core.Plugins;
-using PulseBot.Core.Scheduling;
+using AnBot.Core.Plugins;
+using AnBot.Core.Scheduling;
 
 /// <summary>群助手插件的装配扩展。</summary>
 public static class GroupHelperServiceCollectionExtensions
@@ -806,7 +806,7 @@ builder.Services.Configure<GroupHelperOptions>(
 配置类（`IOptions<T>` 模式，不直接读 `IConfiguration`）：
 
 ```csharp
-using PulseBot.Core.Messages;
+using AnBot.Core.Messages;
 
 /// <summary>群助手插件的配置节：appsettings.json 里的 "Plugins:GroupHelper"。</summary>
 public sealed class GroupHelperOptions
@@ -862,8 +862,8 @@ public sealed class GroupHelperOptions
 #### 13.1 出站中间件：敏感词拦截
 
 ```csharp
-using PulseBot.Core.Adapters;
-using PulseBot.Core.Messages;
+using AnBot.Core.Adapters;
+using AnBot.Core.Messages;
 
 /// <summary>出站敏感词拦截：命中即阻断，消息不会发往平台。</summary>
 public sealed class OutboundGuardMiddleware : IOutboundMiddleware
@@ -940,7 +940,7 @@ public sealed class SignatureMiddleware : IOutboundMiddleware
 #### 13.3 插件生命周期中间件
 
 ```csharp
-using PulseBot.Core.Plugins;
+using AnBot.Core.Plugins;
 
 /// <summary>插件加载/卸载审计：记录每个插件的耗时与结果。</summary>
 public sealed class PluginAuditMiddleware : IPluginLifecycleMiddleware
@@ -987,9 +987,9 @@ public sealed class PluginAuditMiddleware : IPluginLifecycleMiddleware
 
 ```csharp
 using System.Collections.Concurrent;
-using PulseBot.Core.Dispatching;
-using PulseBot.Core.Events;
-using PulseBot.Core.Messages;
+using AnBot.Core.Dispatching;
+using AnBot.Core.Events;
+using AnBot.Core.Messages;
 
 /// <summary>统计每个会话收到的普通消息条数。</summary>
 /// <remarks>
@@ -1050,10 +1050,10 @@ builder.Services.AddEventMiddleware<MyOwnMiddleware>();
 不启动宿主、不连平台，直接构造上下文调用插件方法：
 
 ```csharp
-using PulseBot.Core.Adapters;
-using PulseBot.Core.Commands;
-using PulseBot.Core.Events;
-using PulseBot.Core.Messages;
+using AnBot.Core.Adapters;
+using AnBot.Core.Commands;
+using AnBot.Core.Events;
+using AnBot.Core.Messages;
 using Xunit;
 
 [Trait("Category", "Unit")]
@@ -1110,7 +1110,7 @@ public sealed class GroupHelperPluginTests
 #### 14.2 端到端测试：把管道装起来
 
 分层单测各自验证一环，但**接缝**（谁先执行、谁阻断谁）只有把整条管道装起来才能验证。
-仓库里的 `tests/PulseBot.Core.Tests/EndToEndFlowTests.cs` 是一个完整范例，
+仓库里的 `tests/AnBot.Core.Tests/EndToEndFlowTests.cs` 是一个完整范例，
 它手工装配了「接入控制 → 命令分发 → 普通监听器」的真实管道：
 
 ```csharp
@@ -1160,11 +1160,11 @@ dotnet format                         # 提交前格式化
 
 到这里你已经掌握了插件开发的全部要素。继续深入时，值得一读源码的地方：
 
-- `src/PulseBot.Plugins.Echo/EchoPlugin.cs` —— 最小完整的插件模板（129 行）。
-- `src/PulseBot.Core/Dispatching/` —— 事件分发、命令分发的实现与注释，
+- `src/AnBot.Plugins.Echo/EchoPlugin.cs` —— 最小完整的插件模板（129 行）。
+- `src/AnBot.Core/Dispatching/` —— 事件分发、命令分发的实现与注释，
   尤其是热路径上「缓存委托、不做反射调用」的做法。
-- `src/PulseBot.Adapter.OneBot/` —— 想接新平台时，这是适配器的参考实现。
+- `src/AnBot.Adapter.OneBot/` —— 想接新平台时，这是适配器的参考实现。
 - `tests/` —— 每一条设计约束几乎都有对应测试，是理解「为什么这样设计」的最快途径。
 
-写新插件时，建议直接从 `PulseBot.Plugins.Echo` 复制一份改名开始——
+写新插件时，建议直接从 `AnBot.Plugins.Echo` 复制一份改名开始——
 项目结构、注释风格、测试布局都可以照搬。
